@@ -521,15 +521,11 @@ amrex::Real Inverse_FD_half(amrex::Real u)
 
 // --- Main Calculation Function for Poisson BC values ---
 AMREX_GPU_HOST_DEVICE AMREX_INLINE
-amrex::GpuArray<amrex::Real, 2> CalculatePoissonBoundaryPotentials(
-    amrex::Real Nc, amrex::Real Nv, amrex::Real bandgap_eV, amrex::Real affinity_eV,
-    amrex::Real q_coulombs, amrex::Real kb_joules_per_k, amrex::Real T_kelvin,
-    amrex::Real donor_doping_val, amrex::Real acceptor_doping_val,
-    amrex::Real Phi_Bc_lo = 0.0, amrex::Real Phi_Bc_hi = 0.0)
+amrex::GpuArray<amrex::Real, 2> CalculatePoissonBoundaryPotentials(amrex::Real Phi_Bc_lo = 0.0, amrex::Real Phi_Bc_hi = 0.0)
 {
     /**
      * @brief Calculates the Dirichlet boundary conditions for the Poisson equation at
-     * the top and bottom boundaries of a p-n diode at zero bias.
+     * the top and bottom boundaries of a p-n diode with a given bias. Default = zero bias.
      *
      * @param Nc Effective density of states in conduction band.
      * @param Nv Effective density of states in valence band.
@@ -546,14 +542,14 @@ amrex::GpuArray<amrex::Real, 2> CalculatePoissonBoundaryPotentials(
      * Returns NaNs if Inverse_FD_half returns NaN.
      */
 
-    amrex::Real kbT_over_q_V = (kb_joules_per_k * T_kelvin) / q_coulombs;
+    amrex::Real kbT_over_q_V = (kb * T) / q;
 
     //Calculate phi_ref_V (intrinsic Fermi level relative to vacuum, as a potential)
     amrex::Real log_Nc_over_Nv = log(Nc / Nv);
-    amrex::Real phi_ref_V = affinity_eV + (0.5 * bandgap_eV) + (0.5 * kbT_over_q_V * log_Nc_over_Nv);
+    amrex::Real phi_ref_V = affinity + (0.5 * bandgap) + (0.5 * kbT_over_q_V * log_Nc_over_Nv);
 
     // --- Calculate BC at n-type contact ---
-    amrex::Real u_ntype = donor_doping_val / Nc;
+    amrex::Real u_ntype = donor_doping / Nc;
     amrex::Real eta_ntype = Inverse_FD_half(u_ntype);
 
     if (amrex::Gpu::isnan(eta_ntype)) {
@@ -562,10 +558,10 @@ amrex::GpuArray<amrex::Real, 2> CalculatePoissonBoundaryPotentials(
 
     // Formula for n-type: phi_ohm^n = phi_ref_V - Chi_eV + (kbT/q)*eta + Va
     // affinity_eV is used directly as a potential in Volts.
-    amrex::Real bc_at_bottom_ntype = phi_ref_V - affinity_eV + (kbT_over_q_V * eta_ntype) + Phi_Bc_lo;
+    amrex::Real bc_at_bottom_ntype = phi_ref_V - affinity + (kbT_over_q_V * eta_ntype) + Phi_Bc_lo;
 
     // --- Calculate BC at p-type contact ---
-    amrex::Real u_ptype = acceptor_doping_val / Nv;
+    amrex::Real u_ptype = acceptor_doping / Nv;
     amrex::Real eta_ptype = Inverse_FD_half(u_ptype);
 
     if (amrex::Gpu::isnan(eta_ptype)) {
@@ -574,7 +570,7 @@ amrex::GpuArray<amrex::Real, 2> CalculatePoissonBoundaryPotentials(
 
     // Formula for p-type: phi_ohm^p = phi_ref_V - Chi_eV - Eg_eV - (kbT/q)*eta + Va
     // affinity_eV and bandgap_eV are used directly as potentials in Volts.
-    amrex::Real bc_at_top_ptype = phi_ref_V - affinity_eV - bandgap_eV - (kbT_over_q_V * eta_ptype) + Phi_Bc_hi;
+    amrex::Real bc_at_top_ptype = phi_ref_V - affinity - bandgap - (kbT_over_q_V * eta_ptype) + Phi_Bc_hi;
 
     // Return the calculated boundary conditions
     return {bc_at_bottom_ntype, bc_at_top_ptype};
@@ -589,24 +585,17 @@ void SetPhiBC_z(MultiFab& PoissonPhi, MultiFab& MaterialMask, const amrex::GpuAr
         const Array4<Real>& Phi = PoissonPhi.array(mfi);
         const Array4<Real>& mask = MaterialMask.array(mfi);
 
-        amrex::Real Eg_eV = bandgap;   // Bandgap energy in eV
-        amrex::Real Chi_eV = affinity; // Electron affinity energy in eV
+        amrex::Real kbT_over_q_V = (kb * T) / q;
 
         //Calculate phi_ref_V (intrinsic Fermi level relative to vacuum, as a potential)
         amrex::Real log_Nc_over_Nv = log(Nc / Nv);
-        amrex::Real phi_ref_V = affinity + (0.5 * bandgap) + (0.5 * kb * T / q * log_Nc_over_Nv);
-
-	amrex::Real phi_m_V = use_work_function ? metal_work_function : phi_ref_V;
+        amrex::Real phi_ref_V = affinity + (0.5 * bandgap) + (0.5 * kbT_over_q_V * log_Nc_over_Nv);
+        amrex::Real phi_m_V = use_work_function ? metal_work_function : phi_ref_V;
 
 	// Calculate the boundary conditions
-        amrex::GpuArray<amrex::Real, 2> bc_values = CalculatePoissonBoundaryPotentials(
-           Nc, Nv, bandgap, affinity, q, kb, T,
-           donor_doping, acceptor_doping,
-           Phi_Bc_lo,
-           Phi_Bc_hi 
-        );
+        amrex::GpuArray<amrex::Real, 2> bc_values = CalculatePoissonBoundaryPotentials(Phi_Bc_lo, Phi_Bc_hi);
 
-	//bc_values = {0.0, 0.0};
+//	bc_values = {0.0, 0.0};
 
         amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE(int i, int j, int k)
         {
@@ -838,7 +827,7 @@ void ComputePhi_Rho_Equilibrium(std::unique_ptr<amrex::MLMG>& pMLMG,
 
 {
 //Obtain self consisten Phi and rho
-    Real tol = 1.e-3;
+    Real tol = 1.e-5;
     Real err = 1.0;
     int iter = 0;
     bool contains_SC = false;
@@ -949,7 +938,7 @@ void ComputePhi_Rho(std::unique_ptr<amrex::MLMG>& pMLMG,
             // no semiconductor region; set error to zero so the while loop terminates
             err = 0.;
         } else {
-        //    err = 0.;
+            err = 0.;
 
             // Calculate Error
             if (iter > 0){

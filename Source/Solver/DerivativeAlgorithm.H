@@ -12,13 +12,13 @@ using namespace FerroX;
     amrex::GpuArray<amrex::Real, AMREX_SPACEDIM>const& prob_lo,
     amrex::GpuArray<amrex::Real, AMREX_SPACEDIM>const& prob_hi) {
 
-    if (z_lo < prob_lo[2]){ // bottom metal
-        return (-4.*F(i,j,k-1) + 3.*F(i,j,k) + F(i,j,k+1)) / (3. * dx[2]);
-    } else if (z_hi > prob_hi[2]){ // top metal
-        return (4.*F(i,j,k+1) - 3.*F(i,j,k) - F(i,j,k-1)) / (3. * dx[2]);
-    } else { // inside stack
+//    if (z_lo < prob_lo[2]){ // bottom metal
+//        return (-4.*F(i,j,k-1) + 3.*F(i,j,k) + F(i,j,k+1)) / (3. * dx[2]);
+//    } else if (z_hi > prob_hi[2]){ // top metal
+//        return (4.*F(i,j,k+1) - 3.*F(i,j,k) - F(i,j,k-1)) / (3. * dx[2]);
+//    } else { // inside stack
         return (F(i,j,k+1) - F(i,j,k-1)) / (2. * dx[2]);
-    }
+//    }
  }
 
 /**

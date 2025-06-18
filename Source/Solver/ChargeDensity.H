@@ -32,6 +32,7 @@ void Compute_Effective_Potentials(const MultiFab& PoissonPhi,
                                   const MultiFab& p_den,
                                   MultiFab& e_potential,
                                   MultiFab& p_potential,
+                                  const MultiFab& MaterialMask,
                                   const Geometry& geom);
 
 void ComputeRho_DriftDiffusion(MultiFab&      PoissonPhi,

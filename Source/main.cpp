@@ -158,7 +158,7 @@ void main_main (c_FerroX& rFerroX)
     MultiFab donor_den(ba, dm, 1, 1);
     MultiFab hole_den_old(ba, dm, 1, 1);
     MultiFab e_den_old(ba, dm, 1, 1);
-    MultiFab charge_den(ba, dm, 1, 0);
+    MultiFab charge_den(ba, dm, 1, 1);
     MultiFab MaterialMask(ba, dm, 1, 1);
     MultiFab tphaseMask(ba, dm, 1, 1);
     MultiFab angle_alpha(ba, dm, 1, 0);
@@ -245,9 +245,9 @@ void main_main (c_FerroX& rFerroX)
     //InitializePandRho(P_old, Gamma, charge_den, e_den, hole_den, geom, prob_lo, prob_hi);//old
     InitializePandRho(P_old, Gamma, charge_den, e_den, hole_den, acceptor_den, donor_den, MaterialMask, tphaseMask, n_cell, geom, prob_lo, prob_hi);//mask based
 
-    ComputePhi_Rho_Equilibrium(pMLMG, p_mlabec, alpha_cc, PoissonRHS, PoissonPhi, PoissonPhi_Prev, PhiErr,
-                   P_old, charge_den, Jn, Jp, e_den, hole_den, e_den_old, hole_den_old, MaterialMask,
-                   angle_alpha, angle_beta, angle_theta, geom, prob_lo, prob_hi);
+    //ComputePhi_Rho_Equilibrium(pMLMG, p_mlabec, alpha_cc, PoissonRHS, PoissonPhi, PoissonPhi_Prev, PhiErr,
+    //               P_old, charge_den, Jn, Jp, e_den, hole_den, e_den_old, hole_den_old, MaterialMask,
+    //               angle_alpha, angle_beta, angle_theta, geom, prob_lo, prob_hi);
     
     // Write a plotfile of the initial data if plot_int > 0
     if (plot_int > 0)
