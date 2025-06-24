@@ -142,7 +142,7 @@ c_BoundaryConditions::ReadBoundaryConditionsType()
     pp_boundary.queryarr("lo", bc_str_2d[0]);
     pp_boundary.queryarr("hi", bc_str_2d[1]);
     
-    amrex::Print() << "\n=============== POISSON BOUNDARY CONDITIONS ===============\n";
+    amrex::Print() << "\n============= POISSON BOUNDARY CONDITIONS =============\n";
     
     const char* face_label[2] = {"  lo_face              : ", "  hi_face              : "};
     for (int i = 0; i < 2; ++i)
@@ -155,7 +155,7 @@ c_BoundaryConditions::ReadBoundaryConditionsType()
         amrex::Print() << "\n";
     }
     
-    amrex::Print() << "===========================================================\n\n";
+    amrex::Print() << "=======================================================\n\n";
  
     for (std::size_t i = 0; i < 2; ++i) 
     {

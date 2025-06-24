@@ -283,18 +283,12 @@ void ComputeRho_DriftDiffusion(MultiFab&      PoissonPhi,
                 Array<MultiFab, AMREX_SPACEDIM> &Jp,
                 MultiFab&      e_den,
                 MultiFab&      p_den,
-                MultiFab&      e_den_old,
-                MultiFab&      p_den_old,
+                MultiFab&      acceptor_den,
+                MultiFab&      donor_den,
                 MultiFab& MaterialMask,
                 const Geometry& geom)
 {
 //    amrex::Print() << "Calculating carrier transport using Drift-Diffusion model." << "\n";
-
-    // Define acceptor and donor multifabs for doping and fill them with zero
-    MultiFab acceptor_den(rho.boxArray(), rho.DistributionMap(), 1, 0);
-    MultiFab donor_den(rho.boxArray(), rho.DistributionMap(), 1, 0);
-    acceptor_den.setVal(0.);
-    donor_den.setVal(0.);
 
     // First, calculate the current components and store them in Jn and Jp
     CalculateDriftDiffusionCurrents(Jn, Jp, e_den, p_den, MaterialMask, PoissonPhi, geom);
@@ -307,9 +301,9 @@ void ComputeRho_DriftDiffusion(MultiFab&      PoissonPhi,
     const int domain_lo_z = domain.smallEnd(2);
     const int domain_hi_z = domain.bigEnd(2);
 
-    // Calculate intrinsic carrier concentration
-    amrex::Real ni_sq_val = Nc * Nv * exp(-q*bandgap / (kb * T));
-    amrex::Real ni_val = std::sqrt(ni_sq_val);
+    // Get the intrinsic carrier concentration
+    amrex::Real ni_val = intrinsic_carrier_concentration;
+    amrex::Real ni_sq_val = ni_val * ni_val;
 
     // SRH recombination parameters
     amrex::Real tau_n_val = electron_lifetime; // Electron lifetime
@@ -410,33 +404,10 @@ void ComputeRho_DriftDiffusion(MultiFab&      PoissonPhi,
                     p_den_arr(i, j, k) = amrex::max(p_den_arr(i, j, k), 1.0e10);
                 }
 
-                // --- Calculate Ionized Dopant Densities (for all points) ---
-                amrex::Real g_A = 0.0; // Complete ionization
-                amrex::Real g_D = 0.0; // Complete ionization
+                // --- Assume Complete Ionization For Now ---
+		// Partial Ionization Model would modify acceptor_den_arr(i,j,k) and donor_den_arr(i,j,k) based on local phi.
 
-                amrex::Real Ef = 0.0; // Fermi level
-                amrex::Real Ea = acceptor_ionization_energy;
-                amrex::Real Ed = donor_ionization_energy;
-                amrex::Real Eg = bandgap;
-                amrex::Real Chi = affinity;
-                amrex::Real phi_ref = Chi + 0.5*Eg + 0.5*kb*T*log(Nc/Nv)/q;
-
-                amrex::Real Na, Nd;
-                if (mask(i,j,k) == 2.0) {
-                    Na = 0.0; Nd = 0.0; // Intrinsic
-                } else if (mask(i,j,k) == 3.0) {
-                    Na = acceptor_doping; Nd = 0.0; // P-type
-                } else if (mask(i,j,k) == 4.0) {
-                    Na = 0.0; Nd = donor_doping; // N-type
-                } else {
-                    Na = 0.0; Nd = 0.0; // Default intrinsic
-                }
-
-                // Calculate ionized dopant densities
-                acceptor_den_arr(i,j,k) = Na;
-                donor_den_arr(i,j,k) = Nd;
-
-                // --- Update Total Charge Density ---
+		// --- Update Total Charge Density ---
                 charge_den_arr(i,j,k) = q*(p_den_arr(i,j,k) - e_den_arr(i,j,k) - acceptor_den_arr(i,j,k) + donor_den_arr(i,j,k));
             }
         });
@@ -535,7 +506,7 @@ void Compute_Effective_Potentials(const MultiFab& PoissonPhi,
     amrex::Real phi_ref = Chi + 0.5*Eg + 0.5*kT_q*log(Nc_val/Nv_val);
 
     // Intrinsic carrier concentration
-    Real ni_val = sqrt(Nc_val * Nv_val) * exp(-Eg * q / (2 * kT));
+    Real ni_val = intrinsic_carrier_concentration;
 
     // Get domain boundaries
     const Box& domain = geom.Domain();
@@ -589,8 +560,6 @@ void Compute_Effective_Potentials(const MultiFab& PoissonPhi,
               }
 
               // Calculate intrinsic Fermi energy (Equation 11 from Charon manual)
-              Real Delta_Eg = 0.0;         // Bandgap narrowing (assume 0 for now)
-              
               Real Ei_J = q*phi_ref - Chi*q - q*phi_val - Eg*q/2.0 - (kT*q/2.0) * log((Nc_val*gamma_n)/(Nv_val*gamma_p));
     
               // Calculate effective potential terms (Equation 10)
@@ -601,8 +570,9 @@ void Compute_Effective_Potentials(const MultiFab& PoissonPhi,
 
               Real degeneracy_term = (kT/2.0) * log(gamma_n * gamma_p);
 
-              Real phi_n_eff_val = -(Ei_J - Delta_Eg/2.0 - degeneracy_term)/q;
-              Real phi_p_eff_val = -(Ei_J + Delta_Eg/2.0 + degeneracy_term)/q;
+	      //Bandgap narrowing DeltaEg is in eV. Multiplication by q is to convert it into J to match other terms
+              Real phi_n_eff_val = -(Ei_J - q*DeltaEg/2.0 - degeneracy_term)/q;
+              Real phi_p_eff_val = -(Ei_J + q*DeltaEg/2.0 + degeneracy_term)/q;
 
               // Store the effective potentials
               // The Scharfetter-Gummel method will use gradients of these potentials

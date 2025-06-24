@@ -666,9 +666,10 @@ void CheckSteadyState(MultiFab& PoissonPhi, MultiFab& PoissonPhi_Old, MultiFab& 
         //Copy PoissonPhi to PoissonPhi_Old to calculate difference at the next iteration
         MultiFab::Copy(PoissonPhi_Old, PoissonPhi, 0, 0, 1, 0);
 
-        amrex::Print() << "Steady state check : (phi(t) - phi(t-1)).norm0() = " << max_phi_err << std::endl;
-	amrex::Print() << "max(|Δphi| / phi_max): " << max_phi_err << "\n";
-
+	if(step > 1) {
+		amrex::Print() << "Relative change in Phi = " << max_phi_err << "\n";
+                amrex::Print() << " \n";
+	}
 }
 
 void SetupMLMG(std::unique_ptr<amrex::MLMG>& pMLMG, 
@@ -884,8 +885,8 @@ void ComputePhi_Rho(std::unique_ptr<amrex::MLMG>& pMLMG,
 	     Array<MultiFab, AMREX_SPACEDIM>& Jp,
              MultiFab&            e_den,
              MultiFab&            p_den,
-             MultiFab&            e_den_old,
-             MultiFab&            p_den_old,
+             MultiFab&            acceptor_den,
+             MultiFab&            donor_den,
 	     MultiFab&            MaterialMask,
              MultiFab& angle_alpha, MultiFab& angle_beta, MultiFab& angle_theta,
              const          Geometry& geom,
@@ -907,7 +908,7 @@ void ComputePhi_Rho(std::unique_ptr<amrex::MLMG>& pMLMG,
 	PoissonPhi.FillBoundary(geom.periodicity());
 	
         // Calculate rho from Phi in SC region
-        ComputeRho_DriftDiffusion(PoissonPhi, rho, Jn, Jp, e_den, p_den, e_den_old, p_den_old, MaterialMask, geom);
+        ComputeRho_DriftDiffusion(PoissonPhi, rho, Jn, Jp, e_den, p_den, acceptor_den, donor_den, MaterialMask, geom);
 }
 
 #ifdef AMREX_USE_EB
@@ -924,8 +925,8 @@ void ComputePhi_Rho_EB(std::unique_ptr<amrex::MLMG>& pMLMG,
 	     Array<MultiFab, AMREX_SPACEDIM>& Jp,
              MultiFab&            e_den,
              MultiFab&            p_den,
-             MultiFab&            e_den_old,
-             MultiFab&            p_den_old,
+             MultiFab&            acceptor_den,
+             MultiFab&            donor_den,
 	     MultiFab&            MaterialMask,
              MultiFab& angle_alpha, MultiFab& angle_beta, MultiFab& angle_theta,
              const          Geometry& geom,
@@ -947,6 +948,6 @@ void ComputePhi_Rho_EB(std::unique_ptr<amrex::MLMG>& pMLMG,
 	PoissonPhi.FillBoundary(geom.periodicity());
 	
         // Calculate rho from Phi in SC region
-        ComputeRho_DriftDiffusion(PoissonPhi, rho, Jn, Jp, e_den, p_den, e_den_old, p_den_old, MaterialMask, geom);
+        ComputeRho_DriftDiffusion(PoissonPhi, rho, Jn, Jp, e_den, p_den, acceptor_den, donor_den, MaterialMask, geom);
 }
 #endif

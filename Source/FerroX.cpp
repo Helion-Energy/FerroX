@@ -243,6 +243,8 @@ AMREX_GPU_MANAGED amrex::Real FerroX::hole_diffusion_coefficient;
 AMREX_GPU_MANAGED int FerroX::use_srh_recombination;
 AMREX_GPU_MANAGED amrex::Real FerroX::electron_lifetime; //SRH Recombination Model
 AMREX_GPU_MANAGED amrex::Real FerroX::hole_lifetime; //SRH Recombination Model
+AMREX_GPU_MANAGED int FerroX::use_bandgap_narrowing;
+AMREX_GPU_MANAGED amrex::Real FerroX::DeltaEg; //band gap narrowing
 
 // P and Phi Bc
 AMREX_GPU_MANAGED amrex::Real FerroX::lambda;
@@ -598,7 +600,28 @@ void InitializeFerroXNamespace(const amrex::GpuArray<amrex::Real, AMREX_SPACEDIM
      acceptor_ionization_energy = 44.0e-3; 
      donor_ionization_energy = 46.0e-3; 
 
-     intrinsic_carrier_concentration = std::sqrt(Nc*Nv)*exp(-0.5*q*bandgap/(kb*T));
+     use_bandgap_narrowing = 0;
+     pp.query("use_bandgap_narrowing",use_bandgap_narrowing);
+
+     DeltaEg = 0.0;
+
+     if(use_bandgap_narrowing == 1){
+	     // Slotboom model parameters for Silicon (example values)
+             amrex::Real E_ref_slotboom = 9.0e-3; // eV
+             amrex::Real N_ref_slotboom = 1.0e23; // m^-3
+             amrex::Real C_slotboom     = 0.5;    // Dimensionless constant
+             amrex::Real Dtot   = acceptor_doping + donor_doping;
+
+	     amrex::Real arg = std::log(Dtot / N_ref_slotboom); // Calculate the logarithmic term
+
+             // Slotboom model formula for delta Eg
+	     amrex::Real delta_eg_val = (Dtot > 1.0e21) ? E_ref_slotboom * (arg + std::sqrt(arg * arg + C_slotboom)) : 0.0;
+
+	     DeltaEg = delta_eg_val;
+     }
+
+     amrex::Print() << "DeltaEg = " << DeltaEg << " eV \n";
+     intrinsic_carrier_concentration = std::sqrt(Nc*Nv)*exp(-0.5*q*(bandgap + DeltaEg)/(kb*T));
 
      electron_mobility = 1400.0*1.e-4;                 
      pp.query("electron_mobility",electron_mobility);
