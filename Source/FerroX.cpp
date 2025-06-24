@@ -240,6 +240,9 @@ AMREX_GPU_MANAGED amrex::Real FerroX::electron_mobility;
 AMREX_GPU_MANAGED amrex::Real FerroX::hole_mobility; 
 AMREX_GPU_MANAGED amrex::Real FerroX::electron_diffusion_coefficient; 
 AMREX_GPU_MANAGED amrex::Real FerroX::hole_diffusion_coefficient;    
+AMREX_GPU_MANAGED int FerroX::use_srh_recombination;
+AMREX_GPU_MANAGED amrex::Real FerroX::electron_lifetime; //SRH Recombination Model
+AMREX_GPU_MANAGED amrex::Real FerroX::hole_lifetime; //SRH Recombination Model
 
 // P and Phi Bc
 AMREX_GPU_MANAGED amrex::Real FerroX::lambda;
@@ -460,15 +463,16 @@ void InitializeFerroXNamespace(const amrex::GpuArray<amrex::Real, AMREX_SPACEDIM
      //stack dimensions in 3D. This is an alternate way of initializing the device geometry, which works in simpler scenarios.
      //A more general way of initializing device geometry is accomplished through masks which use function parsers
 
-     //Require FE_lo/hi to be specified in the input file (simplest device possible : MFM).
-     //Make all other material hi/lo optional. By default they will be outside of the problem domain   
+     //User needs to pass the device geometry. By default they will be outside of the problem domain   
 
      for (int i=0; i<AMREX_SPACEDIM; ++i) {
+         FE_lo[i] = prob_lo[i] - 1.0;
          DE_lo[i] = prob_lo[i] - 1.0;
          SC_lo[i] = prob_lo[i] - 1.0;
          p_type_lo[i] = prob_lo[i] - 1.0;
          n_type_lo[i] = prob_lo[i] - 1.0;
 
+         FE_hi[i] = prob_hi[i] + 1.0;
          DE_hi[i] = prob_hi[i] + 1.0;
          SC_hi[i] = prob_hi[i] + 1.0;
          p_type_hi[i] = prob_hi[i] + 1.0;
@@ -484,12 +488,12 @@ void InitializeFerroXNamespace(const amrex::GpuArray<amrex::Real, AMREX_SPACEDIM
 
      amrex::Vector<amrex::Real> temp(AMREX_SPACEDIM);
 
-     pp.getarr("FE_lo",temp);
+     pp.queryarr("FE_lo",temp);
      for (int i=0; i<AMREX_SPACEDIM; ++i) {
          FE_lo[i] = temp[i];
      }
 
-     pp.getarr("FE_hi",temp);
+     pp.queryarr("FE_hi",temp);
      for (int i=0; i<AMREX_SPACEDIM; ++i) {
          FE_hi[i] = temp[i];
      }
@@ -567,9 +571,17 @@ void InitializeFerroXNamespace(const amrex::GpuArray<amrex::Real, AMREX_SPACEDIM
      // 1eV = 1.602e-19 J
 
      Nc = 2.8e25;
+     pp.query("Nc",Nc);
+     
      Nv = 1.83e25;
+     pp.query("Nv",Nv);
+     
      bandgap = 1.12; //eV
+     pp.query("bandgap",bandgap);
+
      affinity = 4.05; //eV
+     pp.query("affinity",affinity);
+
      q = 1.602e-19;
      kb = 1.38e-23; // Boltzmann constant
      T = 300; // Room Temp
@@ -589,9 +601,22 @@ void InitializeFerroXNamespace(const amrex::GpuArray<amrex::Real, AMREX_SPACEDIM
      intrinsic_carrier_concentration = std::sqrt(Nc*Nv)*exp(-0.5*q*bandgap/(kb*T));
 
      electron_mobility = 1400.0*1.e-4;                 
+     pp.query("electron_mobility",electron_mobility);
+
      hole_mobility = 450.0*1.e-4;  
+     pp.query("hole_mobility",hole_mobility);
+
      electron_diffusion_coefficient = electron_mobility*kb*T/q; 
      hole_diffusion_coefficient = hole_mobility*kb*T/q;    
+
+     //SRH Recombination Model
+     use_srh_recombination = 0;
+     pp.query("use_srh_recombination",use_srh_recombination);
+     electron_lifetime = 1.e-4;
+     pp.query("electron_lifetime",electron_lifetime);
+     hole_lifetime = 1.e-4;
+     pp.query("hole_lifetime",hole_lifetime);
+    
 
      use_Fermi_Dirac = 1;
      pp.query("use_Fermi_Dirac",use_Fermi_Dirac);

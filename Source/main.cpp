@@ -192,8 +192,8 @@ void main_main (c_FerroX& rFerroX)
     angle_theta.setVal(0.);
 
     //Initialize material mask
-    InitializeMaterialMask(MaterialMask, geom, prob_lo, prob_hi);
-    //InitializeMaterialMask(rFerroX, geom, MaterialMask);
+    //InitializeMaterialMask(MaterialMask, geom, prob_lo, prob_hi);
+    InitializeMaterialMask(rFerroX, geom, MaterialMask);
     if(Coordinate_Transformation == 1){
        Initialize_tphase_Mask(rFerroX, geom, tphaseMask);
        Initialize_Euler_angles(rFerroX, geom, angle_alpha, angle_beta, angle_theta);
@@ -202,7 +202,7 @@ void main_main (c_FerroX& rFerroX)
     bool contains_SC = false;
 
     FerroX_Util::Contains_sc(MaterialMask, contains_SC);
-    amrex::Print() << "contains_SC = " << contains_SC << "\n";
+    //amrex::Print() << "contains_SC = " << contains_SC << "\n";
 
     std::array<std::array<amrex::LinOpBCType,AMREX_SPACEDIM>,2> LinOpBCType_2d;
     bool all_homogeneous_boundaries = true;
@@ -257,7 +257,7 @@ void main_main (c_FerroX& rFerroX)
                       MaterialMask, tphaseMask, angle_alpha, angle_beta, angle_theta, Phidiff, geom, time, plt_step);
     }
 
-    amrex::Print() << "\n ========= Advance Steps  ========== \n"<< std::endl;
+    amrex::Print() << "========= Advance Steps  ========== \n"<< std::endl;
 
     int steady_state_step = 1000000; //Initialize to a large number. It will be overwritten by the time step at which steady state condition is satidfied
 

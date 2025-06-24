@@ -117,7 +117,6 @@ void ComputeRho(MultiFab&      PoissonPhi,
 
 
 // --- Bernoulli Function Implementation ---
-// This is a crucial part of the Sharfetter-Gummel scheme.
 // It's defined as Bern(x) = x / (exp(x) - 1).
 // Special care is needed for x close to 0 to avoid division by zero (use Taylor expansion).
 AMREX_GPU_HOST_DEVICE AMREX_INLINE
@@ -172,7 +171,6 @@ void CalculateDriftDiffusionCurrents(
     {
         const amrex::Box& bx = mfi.validbox();
 
-        // Get Array4 views for densities and potentials
         amrex::Array4<amrex::Real const> const& e_den_arr = e_den.const_array(mfi);
         amrex::Array4<amrex::Real const> const& p_den_arr = p_den.const_array(mfi);
         amrex::Array4<amrex::Real const> const& phi_arr = PoissonPhi.const_array(mfi);
@@ -180,7 +178,6 @@ void CalculateDriftDiffusionCurrents(
         amrex::Array4<amrex::Real const> const& phi_p_arr = p_potential.const_array(mfi);
         amrex::Array4<Real const> const& mask = MaterialMask.const_array(mfi);
 
-        // Get Array4 views for current components (output)
         amrex::Array4<amrex::Real> const& Jnx_arr = Jn[0].array(mfi);
         amrex::Array4<amrex::Real> const& Jny_arr = Jn[1].array(mfi);
         amrex::Array4<amrex::Real> const& Jnz_arr = Jn[2].array(mfi);
@@ -219,7 +216,7 @@ void CalculateDriftDiffusionCurrents(
                         // Electron current
                         Jnx_arr(i, j, k) = q * D_n / dx[0] * (e_den_arr(i+1,j,k) * Bern(arg_n) - e_den_arr(i,j,k) * Bern(-arg_n));
                         
-                        // Hole current (corrected indices)
+                        // Hole current
                         Jpx_arr(i, j, k) = -q * D_p / dx[0] * (p_den_arr(i+1,j,k) * Bern(-arg_p) - p_den_arr(i,j,k) * Bern(arg_p));
                     }
                 }
@@ -236,7 +233,7 @@ void CalculateDriftDiffusionCurrents(
                         // Electron current
                         Jny_arr(i, j, k) = q * D_n / dx[1] * (e_den_arr(i,j+1,k) * Bern(arg_n_y) - e_den_arr(i,j,k) * Bern(-arg_n_y));
                         
-                        // Hole current (corrected indices)
+                        // Hole current
                         Jpy_arr(i, j, k) = -q * D_p / dx[1] * (p_den_arr(i,j+1,k) * Bern(-arg_p_y) - p_den_arr(i,j,k) * Bern(arg_p_y));
                     }
                 }
@@ -291,7 +288,7 @@ void ComputeRho_DriftDiffusion(MultiFab&      PoissonPhi,
                 MultiFab& MaterialMask,
                 const Geometry& geom)
 {
-    amrex::Print() << "Calculating carrier transport using Drift-Diffusion model." << "\n";
+//    amrex::Print() << "Calculating carrier transport using Drift-Diffusion model." << "\n";
 
     // Define acceptor and donor multifabs for doping and fill them with zero
     MultiFab acceptor_den(rho.boxArray(), rho.DistributionMap(), 1, 0);
@@ -315,8 +312,8 @@ void ComputeRho_DriftDiffusion(MultiFab&      PoissonPhi,
     amrex::Real ni_val = std::sqrt(ni_sq_val);
 
     // SRH recombination parameters
-    amrex::Real tau_n_val = 1.0e-4; // Electron lifetime
-    amrex::Real tau_p_val = 1.0e-4; // Hole lifetime
+    amrex::Real tau_n_val = electron_lifetime; // Electron lifetime
+    amrex::Real tau_p_val = hole_lifetime; // Hole lifetime
 
     // Loop over grids (boxes) in the MultiFab for updating densities
     for (amrex::MFIter mfi(e_den, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi)
@@ -399,12 +396,14 @@ void ComputeRho_DriftDiffusion(MultiFab&      PoissonPhi,
                         R_SRH = SRH_numerator / SRH_denominator;
                     }
 
+		    amrex::Real recomb_term = (use_srh_recombination == 1) ? R_SRH : 0.0;
+
                     // --- Update Carrier Densities ---
                     // Continuity equations:
                     // ∂n/∂t = (1/q) * ∇·Jn - R
                     // ∂p/∂t = -(1/q) * ∇·Jp - R
-                    e_den_arr(i, j, k) += dt * ((1.0/q) * div_Jn - R_SRH);
-                    p_den_arr(i, j, k) += dt * ((-1.0/q) * div_Jp - R_SRH);
+                    e_den_arr(i, j, k) += dt * ((1.0/q) * div_Jn - recomb_term);
+                    p_den_arr(i, j, k) += dt * ((-1.0/q) * div_Jp - recomb_term);
 
                     // Ensure carrier densities remain positive
                     e_den_arr(i, j, k) = amrex::max(e_den_arr(i, j, k), 1.0e10);
@@ -444,7 +443,6 @@ void ComputeRho_DriftDiffusion(MultiFab&      PoissonPhi,
     }
 
     // **NOW SET CONTACT BOUNDARY CONDITIONS AFTER THE MAIN LOOP**
-    // This ensures contact values are not overwritten
     for (amrex::MFIter mfi(e_den); mfi.isValid(); ++mfi)
     {
         const amrex::Box& bx = mfi.growntilebox(1);

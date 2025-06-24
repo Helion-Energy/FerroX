@@ -141,17 +141,22 @@ c_BoundaryConditions::ReadBoundaryConditionsType()
     amrex::ParmParse pp_boundary("boundary");
     pp_boundary.queryarr("lo", bc_str_2d[0]);
     pp_boundary.queryarr("hi", bc_str_2d[1]);
-
-    for (auto& i: bc_str_2d)
+    
+    amrex::Print() << "\n=============== POISSON BOUNDARY CONDITIONS ===============\n";
+    
+    const char* face_label[2] = {"  lo_face              : ", "  hi_face              : "};
+    for (int i = 0; i < 2; ++i)
     {
-        amrex::Print()  << "##### ";
-        for (auto& j: i) 
+        amrex::Print() << face_label[i];
+        for (const auto& bc_type : bc_str_2d[i])
         {
-            amrex::Print()  << j << "  ";
+            amrex::Print() << bc_type << "  ";
         }
         amrex::Print() << "\n";
     }
-        
+    
+    amrex::Print() << "===========================================================\n\n";
+ 
     for (std::size_t i = 0; i < 2; ++i) 
     {
         SortBoundaryTypeArrayString(bc_str_2d[i], bcType_2d[i], bcAny_2d[i], map_bcAny_2d[i]);

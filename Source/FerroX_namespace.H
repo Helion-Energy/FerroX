@@ -77,6 +77,9 @@ namespace FerroX {
     extern AMREX_GPU_MANAGED amrex::Real hole_mobility; 
     extern AMREX_GPU_MANAGED amrex::Real electron_diffusion_coefficient; 
     extern AMREX_GPU_MANAGED amrex::Real hole_diffusion_coefficient; 
+    extern AMREX_GPU_MANAGED int use_srh_recombination;
+    extern AMREX_GPU_MANAGED amrex::Real electron_lifetime; 
+    extern AMREX_GPU_MANAGED amrex::Real hole_lifetime; 
 
     // P and Phi Bc
     extern AMREX_GPU_MANAGED amrex::Real lambda;

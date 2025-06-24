@@ -595,47 +595,37 @@ void SetPhiBC_z(MultiFab& PoissonPhi, MultiFab& MaterialMask, const amrex::GpuAr
 	// Calculate the boundary conditions
         amrex::GpuArray<amrex::Real, 2> bc_values = CalculatePoissonBoundaryPotentials(Phi_Bc_lo, Phi_Bc_hi);
 
-//	bc_values = {0.0, 0.0};
-
         amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE(int i, int j, int k)
         {
-	if(i == 0 && j == 0 && k == 0)amrex::Print() << "bc_values = " << bc_values[0] << ", " << bc_values[1] << "\n";
-
 
             // Boundary condition for the lower z-face (k=0 in problem domain, so k < 0 in ghost cells)
             if (k < 0) {
                 if (mask(i,j,0) == 3.0) { // lo_z touches p-type
     
                     Phi(i,j,k) = bc_values[1];
-                    if(i == 0 && j == 0)amrex::Print() << "lo z : setting up dirichlet BC at p-type contact with Phi_Bc_lo = " << Phi_Bc_lo << ", Phi = " << Phi(i,j,k) << "\n";		
 
                 } else if (mask(i,j,0) == 4.0) { // lo_z touches n-type
 
                     Phi(i,j,k) = bc_values[0];
-                    if(i == 0 && j == 0)amrex::Print() << "lo z : setting up dirichlet BC at n-type contact with Phi_Bc_lo = " << Phi_Bc_lo << ", Phi = " << Phi(i,j,k) << "\n";		
 
                 } else { // lo_z touches insulator or intrinsic SC or metal
 
-                    if(i == 0 && j == 0)amrex::Print() << "lo z : setting up dirichlet BC at insulator or intrinsic SC contact " << "\n";		
                     Phi(i,j,k) = Phi_Bc_lo - (phi_m_V - phi_ref_V);
                 }
             }
 
-            // Boundary condition for the upper z-face (k=n_cell[2] in problem domain, so k >= n_cell[2] in ghost cells)
+            // Boundary condition for the upper z-face (k=n_cell[2]-1 in problem domain, so k >= n_cell[2] in ghost cells)
             if (k >= n_cell[2]) {
                 if (mask(i,j,n_cell[2]-1) == 3.0) { // hi_z touches p-type
     
                     Phi(i,j,k) = bc_values[1];
-                    if(i == 0 && j == 0)amrex::Print() << "hi z : setting up dirichlet BC at p-type contact with Phi_Bc_hi = " << Phi_Bc_hi << ", Phi = " << Phi(i,j,k) << "\n";		
 
                 } else if (mask(i,j,n_cell[2]-1) == 4.0) { // hi_z touches n-type
 
                     Phi(i,j,k) = bc_values[0];
-                    if(i == 0 && j == 0)amrex::Print() << "hi z : setting up dirichlet BC at n-type contact with Phi_Bc_hi = " << Phi_Bc_hi << ", Phi = " << Phi(i,j,k) << "\n";		
 
                 } else { // hi_z touches insulator or intrinsic SC or metal
 
-                    if(i == 0 && j == 0)amrex::Print() << "hi z : setting up dirichlet BC at insulator or intrinsic SC contact " << "\n";		
                     Phi(i,j,k) = Phi_Bc_hi - (phi_m_V - phi_ref_V);
                 }
 	    }
@@ -677,6 +667,7 @@ void CheckSteadyState(MultiFab& PoissonPhi, MultiFab& PoissonPhi_Old, MultiFab& 
         MultiFab::Copy(PoissonPhi_Old, PoissonPhi, 0, 0, 1, 0);
 
         amrex::Print() << "Steady state check : (phi(t) - phi(t-1)).norm0() = " << max_phi_err << std::endl;
+	amrex::Print() << "max(|Δphi| / phi_max): " << max_phi_err << "\n";
 
 }
 
@@ -860,7 +851,6 @@ void ComputePhi_Rho_Equilibrium(std::unique_ptr<amrex::MLMG>& pMLMG,
             // no semiconductor region; set error to zero so the while loop terminates
             err = 0.;
         } else {
-        //    err = 0.;
 
             // Calculate Error
             if (iter > 0){
@@ -903,22 +893,8 @@ void ComputePhi_Rho(std::unique_ptr<amrex::MLMG>& pMLMG,
              const amrex::GpuArray<amrex::Real, AMREX_SPACEDIM>& prob_hi)
 
 {
-//Obtain self consisten Phi and rho
-    Real tol = 1.e-3;
-    Real err = 1.0;
-    int iter = 0;
-    bool contains_SC = false;
-    FerroX_Util::Contains_sc(MaterialMask, contains_SC);
-    
-    while(err > tol){
-   
 	//Compute RHS of Poisson equation
 	ComputePoissonRHS(PoissonRHS, P_old, rho, MaterialMask, angle_alpha, angle_beta, angle_theta, geom);
-
-        //dF_dPhi(alpha_cc, PoissonRHS, PoissonPhi, P_old, Jn, Jp, rho, e_den, p_den, e_den_old, p_den_old,  MaterialMask, angle_alpha, angle_beta, angle_theta, geom, prob_lo, prob_hi);
-
-        //ComputePoissonRHS_Newton(PoissonRHS, PoissonPhi, alpha_cc); 
-
 
         p_mlabec->setACoeffs(0, alpha_cc);
 
@@ -931,32 +907,7 @@ void ComputePhi_Rho(std::unique_ptr<amrex::MLMG>& pMLMG,
 	PoissonPhi.FillBoundary(geom.periodicity());
 	
         // Calculate rho from Phi in SC region
-        //ComputeRho(PoissonPhi, rho, e_den, p_den, MaterialMask);
         ComputeRho_DriftDiffusion(PoissonPhi, rho, Jn, Jp, e_den, p_den, e_den_old, p_den_old, MaterialMask, geom);
-
-	if (contains_SC == 0) {
-            // no semiconductor region; set error to zero so the while loop terminates
-            err = 0.;
-        } else {
-            err = 0.;
-
-            // Calculate Error
-            if (iter > 0){
-                MultiFab::Copy(PhiErr, PoissonPhi, 0, 0, 1, 0);
-                MultiFab::Subtract(PhiErr, PoissonPhi_Prev, 0, 0, 1, 0);
-                err = PhiErr.norm1(0, geom.periodicity())/PoissonPhi.norm1(0, geom.periodicity());
-            }
-
-            //Copy PoissonPhi to PoissonPhi_Prev to calculate error at the next iteration
-            MultiFab::Copy(PoissonPhi_Prev, PoissonPhi, 0, 0, 1, 0);
-
-            iter = iter + 1;
-            amrex::Print() << iter << " iterations :: err = " << err << std::endl;
-            if( iter > 20 ) amrex::Print() <<  "Failed to reach self consistency between Phi and Rho in 20 iterations!! " << std::endl;
-        }
-    }
-    
-    // amrex::Print() << "\n ========= Self-Consistent Initialization of Phi and Rho Done! ========== \n"<< iter << " iterations to obtain self consistent Phi with err = " << err << std::endl;
 }
 
 #ifdef AMREX_USE_EB
@@ -982,22 +933,8 @@ void ComputePhi_Rho_EB(std::unique_ptr<amrex::MLMG>& pMLMG,
              const amrex::GpuArray<amrex::Real, AMREX_SPACEDIM>& prob_hi)
 
 {
-//Obtain self consisten Phi and rho
-    Real tol = 1.e-5;
-    Real err = 1.0;
-    int iter = 0;
-    bool contains_SC = false;
-    FerroX_Util::Contains_sc(MaterialMask, contains_SC);
-    
-    while(err > tol){
-   
 	//Compute RHS of Poisson equation
 	ComputePoissonRHS(PoissonRHS, P_old, rho, MaterialMask, angle_alpha, angle_beta, angle_theta, geom);
-
-        //dF_dPhi(alpha_cc, PoissonRHS, PoissonPhi, P_old, Jn, Jp, rho, e_den, p_den, e_den_old, p_den_old,  MaterialMask, angle_alpha, angle_beta, angle_theta, geom, prob_lo, prob_hi);
-
-        //ComputePoissonRHS_Newton(PoissonRHS, PoissonPhi, alpha_cc); 
-
 
         p_mlebabec->setACoeffs(0, alpha_cc);
 
@@ -1006,33 +943,10 @@ void ComputePhi_Rho_EB(std::unique_ptr<amrex::MLMG>& pMLMG,
 
         //Poisson Solve
         pMLMG->solve({&PoissonPhi}, {&PoissonRHS}, 1.e-10, -1);
-	    PoissonPhi.FillBoundary(geom.periodicity());
+
+	PoissonPhi.FillBoundary(geom.periodicity());
 	
         // Calculate rho from Phi in SC region
-        //ComputeRho(PoissonPhi, rho, e_den, p_den, MaterialMask);
         ComputeRho_DriftDiffusion(PoissonPhi, rho, Jn, Jp, e_den, p_den, e_den_old, p_den_old, MaterialMask, geom);
-        
-	if (contains_SC == 0) {
-            // no semiconductor region; set error to zero so the while loop terminates
-            err = 0.;
-        } else {
-
-            // Calculate Error
-            if (iter > 0){
-                MultiFab::Copy(PhiErr, PoissonPhi, 0, 0, 1, 0);
-                MultiFab::Subtract(PhiErr, PoissonPhi_Prev, 0, 0, 1, 0);
-                err = PhiErr.norm1(0, geom.periodicity())/PoissonPhi.norm1(0, geom.periodicity());
-            }
-
-            //Copy PoissonPhi to PoissonPhi_Prev to calculate error at the next iteration
-            MultiFab::Copy(PoissonPhi_Prev, PoissonPhi, 0, 0, 1, 0);
-
-            iter = iter + 1;
-            amrex::Print() << iter << " iterations :: err = " << err << std::endl;
-            if( iter > 20 ) amrex::Print() <<  "Failed to reach self consistency between Phi and Rho in 20 iterations!! " << std::endl;
-        }
-    }
-    
-    // amrex::Print() << "\n ========= Self-Consistent Initialization of Phi and Rho Done! ========== \n"<< iter << " iterations to obtain self consistent Phi with err = " << err << std::endl;
 }
 #endif

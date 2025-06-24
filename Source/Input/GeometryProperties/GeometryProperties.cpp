@@ -141,27 +141,35 @@ c_GeometryProperties::ParseBasicDomainInput()
         coord_sys = amrex::CoordSys::RZ;
     }
 
-    amrex::Print() << "\n##### GEOMETRY PROPERTIES #####\n\n";
-    amrex::Print() << "##### n_cell: ";
-    for (int i=0; i<AMREX_SPACEDIM; ++i) amrex::Print() << n_cell[i] << "  ";
+    amrex::Print() << "\n================= GEOMETRY PROPERTIES =================\n";
+    
+    amrex::Print() << "  n_cell               : ";
+    for (int i = 0; i < AMREX_SPACEDIM; ++i) amrex::Print() << n_cell[i] << " ";
     amrex::Print() << "\n";
-    amrex::Print() << "##### prob_lo: ";
-    for (int i=0; i<AMREX_SPACEDIM; ++i) amrex::Print() << prob_lo[i] << "  ";
+    
+    amrex::Print() << "  prob_lo              : ";
+    for (int i = 0; i < AMREX_SPACEDIM; ++i) amrex::Print() << prob_lo[i] << " ";
     amrex::Print() << "\n";
-    amrex::Print() << "##### prob_hi: ";
-    for (int i=0; i<AMREX_SPACEDIM; ++i) amrex::Print() << prob_hi[i] << "  ";
+    
+    amrex::Print() << "  prob_hi              : ";
+    for (int i = 0; i < AMREX_SPACEDIM; ++i) amrex::Print() << prob_hi[i] << " ";
     amrex::Print() << "\n";
-    amrex::Print() << "##### max_grid_size: ";
-    for (int i=0; i<AMREX_SPACEDIM; ++i) amrex::Print() << max_grid_size[i] << "  ";
+    
+    amrex::Print() << "  max_grid_size        : ";
+    for (int i = 0; i < AMREX_SPACEDIM; ++i) amrex::Print() << max_grid_size[i] << " ";
     amrex::Print() << "\n";
-    amrex::Print() << "##### blocking_factor: ";
-    for (int i=0; i<AMREX_SPACEDIM; ++i) amrex::Print() << blocking_factor[i] << "  ";
+    
+    amrex::Print() << "  blocking_factor      : ";
+    for (int i = 0; i < AMREX_SPACEDIM; ++i) amrex::Print() << blocking_factor[i] << " ";
     amrex::Print() << "\n";
-    amrex::Print() << "##### is_periodic: ";
-    for (int i=0; i<AMREX_SPACEDIM; ++i) amrex::Print() << is_periodic[i] << "  ";
+    
+    amrex::Print() << "  is_periodic          : ";
+    for (int i = 0; i < AMREX_SPACEDIM; ++i) amrex::Print() << is_periodic[i] << " ";
     amrex::Print() << "\n";
-    amrex::Print() << "##### coord_sys: " << coord_sys << "\n";
-    amrex::Print() << "##### embedded_boundary_flag: " << embedded_boundary_flag << "\n";
+    
+    amrex::Print() << "  coord_sys            : " << coord_sys << "\n";
+    amrex::Print() << "  embedded_boundary    : " << embedded_boundary_flag << "\n";
+    amrex::Print() << "=======================================================\n\n";
 
 #ifdef AMREX_USE_EB
     if(embedded_boundary_flag) pEB = std::make_unique<c_EmbeddedBoundaries>();

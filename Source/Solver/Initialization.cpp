@@ -16,7 +16,7 @@ void InitializePandRho(Array<MultiFab, AMREX_SPACEDIM> &P_old,
 		   const amrex::GpuArray<amrex::Real, AMREX_SPACEDIM>& prob_lo,
                    const amrex::GpuArray<amrex::Real, AMREX_SPACEDIM>& prob_hi)
 {
-
+/*
     if (prob_type == 1) {  //2D : Initialize uniform P in y direction
 
        amrex::Print() << "==================================""\n"
@@ -42,7 +42,7 @@ void InitializePandRho(Array<MultiFab, AMREX_SPACEDIM> &P_old,
                        "prob_type = 3 for convergence tests." "\n";
       amrex::Abort();
     }
-
+*/
     // Read this from inputs file. Default seed = 1
     int seed = random_seed;
 
@@ -337,7 +337,8 @@ void InitializeMaterialMask(c_FerroX& rFerroX, const Geometry& geom, MultiFab& M
     for (MFIter mfi(MaterialMask, TilingIfNotGPU()); mfi.isValid(); ++mfi)
     {
         const auto& mask_arr = MaterialMask.array(mfi);
-        const auto& bx = mfi.tilebox();
+        //const auto& bx = mfi.tilebox();
+        const auto& bx = mfi.growntilebox(1);
 
 	std::string m_mask_s;
 	std::unique_ptr<amrex::Parser> m_mask_parser;
