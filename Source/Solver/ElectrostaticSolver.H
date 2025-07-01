@@ -69,6 +69,11 @@ void ComputePoissonRHS_Newton(MultiFab& PoissonRHS,
 //void SetPhiBC_z(MultiFab& PossonPhi, const amrex::GpuArray<int, AMREX_SPACEDIM>& n_cell, const Geometry& geom);
 void SetPhiBC_z(MultiFab& PoissonPhi, MultiFab& MaterialMask, const amrex::GpuArray<int, AMREX_SPACEDIM>& n_cell, const Geometry& geom);
 
+void SetPhiBC_z(MultiFab& PoissonPhi, MultiFab& MaterialMask,
+                const MultiFab& acceptor_den_mf, const MultiFab& donor_den_mf,
+                const amrex::GpuArray<int, AMREX_SPACEDIM>& n_cell,
+                const Geometry& geom);
+	
 void SetPoissonBC(c_FerroX& rFerroX, std::array<std::array<amrex::LinOpBCType,AMREX_SPACEDIM>,2>& LinOpBCType_2d, bool& all_homogeneous_boundaries, bool& some_functionbased_inhomogeneous_boundaries, bool& some_constant_inhomogeneous_boundaries);
 
 void Fill_Constant_Inhomogeneous_Boundaries(c_FerroX& rFerroX, MultiFab& PoissonPhi);
@@ -81,6 +86,8 @@ void SetupMLMG(std::unique_ptr<amrex::MLMG>& pMLMG,
         const amrex::GpuArray<int, AMREX_SPACEDIM>& n_cell,
         std::array< MultiFab, AMREX_SPACEDIM >& beta_face,
         MultiFab& MaterialMask,
+	const MultiFab& acceptor_den,
+        const MultiFab& donor_den,
         c_FerroX& rFerroX, MultiFab& PoissonPhi, amrex::Real& time, amrex::LPInfo& info);
 
 #ifdef AMREX_USE_EB

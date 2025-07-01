@@ -600,37 +600,134 @@ void SetPhiBC_z(MultiFab& PoissonPhi, MultiFab& MaterialMask, const amrex::GpuAr
 
             // Boundary condition for the lower z-face (k=0 in problem domain, so k < 0 in ghost cells)
             if (k < 0) {
-                if (mask(i,j,0) == 3.0) { // lo_z touches p-type
+                if (mask(i,j,k) == 3.0 || mask(i,j,k) == 5.0) { // lo_z touches p-type
     
                     Phi(i,j,k) = bc_values[1];
+		    if(i == 0 && j == 0) amrex::Print() << "p-type BC at k = " << k <<", mask = " << mask(0,0,k) << "\n";
 
-                } else if (mask(i,j,0) == 4.0) { // lo_z touches n-type
+                } else if (mask(i,j,k) == 4.0 || mask(i,j,k) == 6.0) { // lo_z touches n-type
 
                     Phi(i,j,k) = bc_values[0];
+		    if(i == 0 && j == 0) amrex::Print() << "n-type BC at k = " << k <<", mask = " << mask(0,0,k) << "\n";
 
                 } else { // lo_z touches insulator or intrinsic SC or metal
-
+			 
                     Phi(i,j,k) = Phi_Bc_lo - (phi_m_V - phi_ref_V);
+		    if(i == 0 && j == 0) amrex::Print() << "insulator BC at k = " << k <<", mask = " << mask(0,0,k) << "\n";
+
                 }
             }
 
             // Boundary condition for the upper z-face (k=n_cell[2]-1 in problem domain, so k >= n_cell[2] in ghost cells)
             if (k >= n_cell[2]) {
-                if (mask(i,j,n_cell[2]-1) == 3.0) { // hi_z touches p-type
-    
+                if (mask(i,j,k) == 3.0 || mask(i,j,k) == 5.0) { // hi_z touches p-type
+
+		    if(i == 0 && j == 0) amrex::Print() << "p-type BC at k = " << k <<", mask = " << mask(0,0,k) << "\n";
                     Phi(i,j,k) = bc_values[1];
 
-                } else if (mask(i,j,n_cell[2]-1) == 4.0) { // hi_z touches n-type
+                } else if (mask(i,j,k) == 4.0 || mask(i,j,k) == 6.0) { // hi_z touches n-type
 
                     Phi(i,j,k) = bc_values[0];
+		    if(i == 0 && j == 0) amrex::Print() << "n-type BC at k = " << k <<", mask = " << mask(0,0,k) << "\n";
 
                 } else { // hi_z touches insulator or intrinsic SC or metal
 
                     Phi(i,j,k) = Phi_Bc_hi - (phi_m_V - phi_ref_V);
+		    if(i == 0 && j == 0) amrex::Print() << "insulator BC at k = " << k <<", mask = " << mask(0,0,k) << "\n";
+		    
                 }
 	    }
         });
     }
+    PoissonPhi.FillBoundary(geom.periodicity());
+}
+
+void SetPhiBC_z(MultiFab& PoissonPhi, MultiFab& MaterialMask,
+                const MultiFab& acceptor_den_mf, const MultiFab& donor_den_mf,
+                const amrex::GpuArray<int, AMREX_SPACEDIM>& n_cell,
+                const Geometry& geom)
+{
+    // --- Incorporate the constants and calculations from CalculatePoissonBoundaryPotentials ---
+    // These constants should be accessible in the scope of this function.
+    // Make sure they are defined before this function is called.
+    amrex::Real kbT_over_q_V = (kb * T) / q;
+    amrex::Real phi_ref_V = affinity + (0.5 * bandgap) + (0.5 * kbT_over_q_V * log(Nc / Nv));
+
+    // --- Create a GPU-enabled lambda to calculate the BC for a single point ---
+    // This function can be called within the ParallelFor loop.
+
+    auto calculate_local_bc = [=] AMREX_GPU_DEVICE (amrex::Real local_doping_val,
+                                                amrex::Real applied_voltage,
+                                                bool is_ntype) -> amrex::Real
+    {
+        if (is_ntype) {
+            amrex::Real u_ntype = local_doping_val / Nc;
+            amrex::Real eta_ntype = Inverse_FD_half(u_ntype);
+            return phi_ref_V - affinity + (kbT_over_q_V * eta_ntype) + applied_voltage;
+        } else { // p-type
+            amrex::Real u_ptype = local_doping_val / Nv;
+	    amrex::Real eta_ptype = Inverse_FD_half(u_ptype);
+            return phi_ref_V - affinity - bandgap - (kbT_over_q_V * eta_ptype) + applied_voltage;
+        }
+    };
+
+    // --- Begin iterating over the MultiFab tiles ---
+    for (MFIter mfi(PoissonPhi); mfi.isValid(); ++mfi)
+    {
+        // Get the box including ghost cells (growntilebox(1))
+        const Box& bx = mfi.growntilebox(1);
+
+        // Get Array4 views for device access
+        const Array4<Real>& Phi = PoissonPhi.array(mfi);
+        const Array4<Real>& mask = MaterialMask.array(mfi);
+        const Array4<Real const>& acceptor_den_arr = acceptor_den_mf.array(mfi);
+        const Array4<Real const>& donor_den_arr = donor_den_mf.array(mfi);
+
+        // --- Parallel loop over all cells in the grown box ---
+        amrex::ParallelFor(bx, [=] AMREX_GPU_DEVICE(int i, int j, int k)
+        {
+            // Boundary condition for the lower z-face (k < 0 in ghost cells)
+            if (k < 0) {
+                if (mask(i,j,k) == 3.0 || mask(i,j,k) == 5.0) { // lo_z touches p-type
+                    // Read local acceptor doping and use the applied voltage for the low face
+                    amrex::Real local_doping = acceptor_den_arr(i, j, k);
+                    Phi(i,j,k) = calculate_local_bc(local_doping, Phi_Bc_lo, false);
+
+                } else if (mask(i,j,k) == 4.0 || mask(i,j,k) == 6.0) { // lo_z touches n-type
+                    // Read local donor doping and use the applied voltage for the low face
+                    amrex::Real local_doping = donor_den_arr(i, j, k);
+                    Phi(i,j,k) = calculate_local_bc(local_doping, Phi_Bc_lo, true);
+
+                } else { // lo_z touches insulator or intrinsic SC or metal
+                    // Use the work function BC for these regions
+                    amrex::Real phi_m_V = use_work_function ? metal_work_function : phi_ref_V;
+                    Phi(i,j,k) = Phi_Bc_lo - (phi_m_V - phi_ref_V);
+                }
+            }
+
+            // Boundary condition for the upper z-face (k >= n_cell[2] in ghost cells)
+            if (k >= n_cell[2]) {
+                if (mask(i,j,k) == 3.0 || mask(i,j,k) == 5.0) { // hi_z touches p-type
+                    // Read local acceptor doping and use the applied voltage for the high face
+                    amrex::Real local_doping = acceptor_den_arr(i, j, k);
+                    Phi(i,j,k) = calculate_local_bc(local_doping, Phi_Bc_hi, false);
+		    if(i == 0 && j == 0) amrex::Print() << "p-type BC at k = " << k <<", mask = " << mask(0,0,k) << "Phi_BC = " << calculate_local_bc(local_doping, Phi_Bc_hi, false) << "\n";
+
+                } else if (mask(i,j,k) == 4.0 || mask(i,j,k) == 6.0) { // hi_z touches n-type
+                    // Read local donor doping and use the applied voltage for the high face
+                    amrex::Real local_doping = donor_den_arr(i, j, k);
+                    Phi(i,j,k) = calculate_local_bc(local_doping, Phi_Bc_hi, true);
+		    if(i == 0 && j == 0) amrex::Print() << "n-type BC at k = " << k <<", mask = " << mask(0,0,k) << "Phi_BC = " << calculate_local_bc(local_doping, Phi_Bc_hi, true) << "\n";
+
+                } else { // hi_z touches insulator or intrinsic SC or metal
+                    // Use the work function BC for these regions
+                    amrex::Real phi_m_V = use_work_function ? metal_work_function : phi_ref_V;
+                    Phi(i,j,k) = Phi_Bc_hi - (phi_m_V - phi_ref_V);
+                }
+            }
+        });
+    }
+
     PoissonPhi.FillBoundary(geom.periodicity());
 }
 
@@ -678,6 +775,8 @@ void SetupMLMG(std::unique_ptr<amrex::MLMG>& pMLMG,
         const amrex::GpuArray<int, AMREX_SPACEDIM>& n_cell,
         std::array< MultiFab, AMREX_SPACEDIM >& beta_face,
 	MultiFab& MaterialMask,
+	const MultiFab& acceptor_den,
+	const MultiFab& donor_den,
         c_FerroX& rFerroX, MultiFab& PoissonPhi, amrex::Real& time, amrex::LPInfo& info)
  {
     auto& rGprop = rFerroX.get_GeometryProperties();
@@ -715,7 +814,8 @@ void SetupMLMG(std::unique_ptr<amrex::MLMG>& pMLMG,
     // For now only this option implements Ohmic contacts and metal work function 
     // set Dirichlet BC by reading in the ghost cell values
     //if(some_constant_inhomogeneous_boundaries){
-       SetPhiBC_z(PoissonPhi, MaterialMask, n_cell, geom);
+       //SetPhiBC_z(PoissonPhi, MaterialMask, n_cell, geom);
+       SetPhiBC_z(PoissonPhi, MaterialMask, acceptor_den, donor_den, n_cell, geom);
     //}
 
     p_mlabec->setLevelBC(amrlev, &PoissonPhi);

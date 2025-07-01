@@ -123,9 +123,9 @@ AMREX_GPU_HOST_DEVICE AMREX_INLINE
 amrex::Real Bern(amrex::Real x)
 {
     // Use a small epsilon for robustness around x=0
-    if (amrex::Math::abs(x) < 1.0e-6) {
+    if (amrex::Math::abs(x) < 1.0e-4) {
         // Taylor expansion for small x: 1 - x/2 + x^2/12 - x^4/720 + ...
-        return 1.0 - x/2.0 + x*x/12.0;
+        return 1.0 - x/2.0; // + x*x/12.0;
     } 
     // Handle large positive arguments
     else if (x > 50.0) {
@@ -252,17 +252,17 @@ void CalculateDriftDiffusionCurrents(
                         
                         // Hole current
                         Jpz_arr(i, j, k) = -q * D_p / dx[2] * (p_den_arr(i,j,k+1) * Bern(-arg_p_z) - p_den_arr(i,j,k) * Bern(arg_p_z));
-    //                    if(i == 1 && j == 1 && (k == domain.bigEnd(2) || k == domain.bigEnd(2) - 1)){
-    //                        amrex::Real p_den_k = p_den_arr(i,j,k);
-    //                        amrex::Real p_den_kp1 = p_den_arr(i,j,k+1); // THIS IS THE CRITICAL VALUE TO CHECK
-    //                    
-    //                        amrex::Print() << "k = " << k << ", p_den_arr(k) = " << p_den_k << "\n";
-    //                        amrex::Print() << "k = " << k << ", p_den_arr(k+1) = " << p_den_kp1 << "\n";
-    //                        amrex::Print() << "k = " << k << ", arg_p_z = " << arg_p_z << "\n"; // This arg_p_z is for current from k to k+1
-    //                        amrex::Print() << "k = " << k << ", Bern(-arg_p_z) = " << Bern(-arg_p_z) << "\n";
-    //                        amrex::Print() << "k = " << k << ", Bern(arg_p_z) = " << Bern(arg_p_z) << "\n";
-    //                        amrex::Print() << "k = " << k << ", Jpz_arr  = " << Jpz_arr(i, j, k) << "\n";
-    //                    }
+                        //if(i == 1 && j == 1 && (k == domain.bigEnd(2) || k == domain.bigEnd(2) - 1)){
+                        //    amrex::Real p_den_k = p_den_arr(i,j,k);
+                        //    amrex::Real p_den_kp1 = p_den_arr(i,j,k+1); // THIS IS THE CRITICAL VALUE TO CHECK
+                        //
+                        //    amrex::Print() << "k = " << k << ", p_den_arr(k) = " << p_den_k << "\n";
+                        //    amrex::Print() << "k = " << k << ", p_den_arr(k+1) = " << p_den_kp1 << "\n";
+                        //    amrex::Print() << "k = " << k << ", phi_arr(k) = " << phi_p_arr(i,j,k) << "\n";
+                        //    amrex::Print() << "k = " << k << ", phi_arr(k+1) = " << phi_p_arr(i,j,k+1) << "\n";
+                        //    amrex::Print() << "k = " << k << ", Bern(-arg_p_z)  = " << Bern(-arg_p_z) << "\n";
+                        //    amrex::Print() << "k = " << k << ", Bern(arg_p_z)  = " << Bern(arg_p_z) << "\n";
+                        //}
 		    }
                 } 
             }
@@ -347,34 +347,43 @@ void ComputeRho_DriftDiffusion(MultiFab&      PoissonPhi,
                     amrex::Real div_Jn = 0.0;
                     amrex::Real div_Jp = 0.0;
 
-                    // X-direction divergence
-                    if (i > domain.smallEnd(0)) {
-                        div_Jn += (Jnx_arr(i, j, k) - Jnx_arr(i-1, j, k)) / dx[0];
-                        div_Jp += (Jpx_arr(i, j, k) - Jpx_arr(i-1, j, k)) / dx[0];
-                    } else {
+		    // X-direction divergence
+                    if (i == domain.smallEnd(0)) {
                         div_Jn += Jnx_arr(i, j, k) / dx[0];
                         div_Jp += Jpx_arr(i, j, k) / dx[0];
-                    }
-
-                    // Y-direction divergence
-                    if (j > domain.smallEnd(1)) {
-                        div_Jn += (Jny_arr(i, j, k) - Jny_arr(i, j-1, k)) / dx[1];
-                        div_Jp += (Jpy_arr(i, j, k) - Jpy_arr(i, j-1, k)) / dx[1];
+                    } else if (i == domain.bigEnd(0)) {
+                        div_Jn += -Jnx_arr(i-1, j, k) / dx[0];
+                        div_Jp += -Jpx_arr(i-1, j, k) / dx[0];
                     } else {
+                        div_Jn += (Jnx_arr(i, j, k) - Jnx_arr(i-1, j, k)) / dx[0];
+                        div_Jp += (Jpx_arr(i, j, k) - Jpx_arr(i-1, j, k)) / dx[0];
+                    }
+                    
+                    // Y-direction divergence
+                    if (j == domain.smallEnd(1)) {
                         div_Jn += Jny_arr(i, j, k) / dx[1];
                         div_Jp += Jpy_arr(i, j, k) / dx[1];
-                    }
-
-                    // Z-direction divergence
-                    if (k > domain.smallEnd(2)) {
-                        div_Jn += (Jnz_arr(i, j, k) - Jnz_arr(i, j, k-1)) / dx[2];
-                        div_Jp += (Jpz_arr(i, j, k) - Jpz_arr(i, j, k-1)) / dx[2];
+                    } else if (j == domain.bigEnd(1)) {
+                        div_Jn += -Jny_arr(i, j-1, k) / dx[1];
+                        div_Jp += -Jpy_arr(i, j-1, k) / dx[1];
                     } else {
+                        div_Jn += (Jny_arr(i, j, k) - Jny_arr(i, j-1, k)) / dx[1];
+                        div_Jp += (Jpy_arr(i, j, k) - Jpy_arr(i, j-1, k)) / dx[1];
+                    }
+                    
+                    // Z-direction divergence
+                    if (k == domain.smallEnd(2)) {
                         div_Jn += Jnz_arr(i, j, k) / dx[2];
                         div_Jp += Jpz_arr(i, j, k) / dx[2];
+                    } else if (k == domain.bigEnd(2)) {
+                        div_Jn += -Jnz_arr(i, j, k-1) / dx[2];
+                        div_Jp += -Jpz_arr(i, j, k-1) / dx[2];
+                    } else {
+                        div_Jn += (Jnz_arr(i, j, k) - Jnz_arr(i, j, k-1)) / dx[2];
+                        div_Jp += (Jpz_arr(i, j, k) - Jpz_arr(i, j, k-1)) / dx[2];
                     }
-
-                    // --- Calculate SRH Net Recombination Rate ---
+                    
+		    // --- Calculate SRH Net Recombination Rate ---
                     amrex::Real current_n = e_den_arr(i, j, k);
                     amrex::Real current_p = p_den_arr(i, j, k);
 
@@ -412,7 +421,7 @@ void ComputeRho_DriftDiffusion(MultiFab&      PoissonPhi,
             }
         });
     }
-
+/*
     // **NOW SET CONTACT BOUNDARY CONDITIONS AFTER THE MAIN LOOP**
     for (amrex::MFIter mfi(e_den); mfi.isValid(); ++mfi)
     {
@@ -427,10 +436,10 @@ void ComputeRho_DriftDiffusion(MultiFab&      PoissonPhi,
         amrex::ParallelFor(bx, [=] AMREX_GPU_HOST_DEVICE (int i, int j, int k)
         {
             if (mask(i,j,k) >= 2.0) {
-                bool at_left_contact = (k == domain_lo_z);
-                bool at_right_contact = (k == domain_hi_z);
+                //bool at_left_contact = (k == domain_lo_z);
+                //bool at_right_contact = (k == domain_hi_z);
 
-                if (k < domain_lo_z) {
+                if (k <= domain_lo_z) {
                     // Left contact - N-type boundary condition
                     e_den_arr(i, j, k) = 0.5*donor_doping + std::sqrt(std::pow(0.5*donor_doping, 2.0) + ni_sq_val);
                     p_den_arr(i, j, k) = ni_sq_val / e_den_arr(i, j, k);
@@ -438,13 +447,53 @@ void ComputeRho_DriftDiffusion(MultiFab&      PoissonPhi,
                     // Update charge density for contact
                     charge_den_arr(i,j,k) = q*(p_den_arr(i,j,k) - e_den_arr(i,j,k) + donor_den_arr(i,j,k));
                 }
-                else if (k > domain_hi_z) {
+                else if (k >= domain_hi_z) {
                     // Right contact - P-type boundary condition
                     p_den_arr(i, j, k) = 0.5*acceptor_doping + std::sqrt(std::pow(0.5*acceptor_doping, 2.0) + ni_sq_val);
                     e_den_arr(i, j, k) = ni_sq_val / p_den_arr(i, j, k);
                     
                     // Update charge density for contact
                     charge_den_arr(i,j,k) = q*(p_den_arr(i,j,k) - e_den_arr(i,j,k) - acceptor_den_arr(i,j,k));
+                }
+            }
+        });
+    }
+*/
+    // **NOW SET CONTACT BOUNDARY CONDITIONS AFTER THE MAIN LOOP**
+    for (amrex::MFIter mfi(e_den); mfi.isValid(); ++mfi)
+    {
+        const amrex::Box& bx = mfi.growntilebox(1);
+        amrex::Array4<amrex::Real> e_den_arr = e_den.array(mfi);
+        amrex::Array4<amrex::Real> p_den_arr = p_den.array(mfi);
+        amrex::Array4<amrex::Real> charge_den_arr = rho.array(mfi);
+        const Array4<Real>& acceptor_den_arr = acceptor_den.array(mfi);
+        const Array4<Real>& donor_den_arr = donor_den.array(mfi);
+        const Array4<Real>& mask = MaterialMask.array(mfi);
+    
+        amrex::ParallelFor(bx, [=] AMREX_GPU_HOST_DEVICE (int i, int j, int k)
+        {
+            // Check if we are at a contact boundary in z
+            if (k <= domain_lo_z || k >= domain_hi_z) {
+                // Check if the material is a semiconductor
+                if (mask(i,j,k) >= 2.0) {
+                    // Now check the material type to determine the BC and use local doping
+                    if (mask(i,j,k) == 4.0 || mask(i,j,k) == 6.0) { // n-type or n++
+                        // Apply N-type BC using local donor doping
+                        amrex::Real local_doping = donor_den_arr(i, j, k);
+                        e_den_arr(i, j, k) = 0.5*local_doping + std::sqrt(std::pow(0.5*local_doping, 2.0) + ni_sq_val);
+                        p_den_arr(i, j, k) = ni_sq_val / e_den_arr(i, j, k);
+    
+                        // Update charge density for contact
+                        charge_den_arr(i,j,k) = q*(p_den_arr(i,j,k) - e_den_arr(i,j,k) + local_doping);
+                    } else if (mask(i,j,k) == 3.0 || mask(i,j,k) == 5.0) { // p-type or p++
+                        // Apply P-type BC using local acceptor doping
+                        amrex::Real local_doping = acceptor_den_arr(i, j, k);
+                        p_den_arr(i, j, k) = 0.5*local_doping + std::sqrt(std::pow(0.5*local_doping, 2.0) + ni_sq_val);
+                        e_den_arr(i, j, k) = ni_sq_val / p_den_arr(i, j, k);
+    
+                        // Update charge density for contact
+                        charge_den_arr(i,j,k) = q*(p_den_arr(i,j,k) - e_den_arr(i,j,k) - local_doping);
+                    }
                 }
             }
         });

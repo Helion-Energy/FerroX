@@ -143,7 +143,8 @@ void InitializePandRho(Array<MultiFab, AMREX_SPACEDIM> &P_old,
     // loop over boxes
     for (MFIter mfi(rho); mfi.isValid(); ++mfi)
     {
-        const Box& bx = mfi.validbox();
+        //const Box& bx = mfi.tilebox();
+        const Box& bx = mfi.growntilebox(1);
 
         const Array4<Real>& hole_den_arr = p_den.array(mfi);
         const Array4<Real>& e_den_arr = e_den.array(mfi);
@@ -154,6 +155,7 @@ void InitializePandRho(Array<MultiFab, AMREX_SPACEDIM> &P_old,
 
         // extract dx from the geometry object
         GpuArray<Real,AMREX_SPACEDIM> dx = geom.CellSizeArray();
+	/*
         amrex::ParallelFor( bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
         {
             amrex::Real Na_val, Nd_val; // Use temporary values for N_A and N_D for this cell
@@ -164,7 +166,7 @@ void InitializePandRho(Array<MultiFab, AMREX_SPACEDIM> &P_old,
             
                 // Calculate current z position
                 Real z_pos = prob_lo[2] + (k+0.5) * dx[2];
-                Real junction_z = 0.5e-6;  // P-N interface at 0.5 μm
+                Real junction_z = 1e6;  //nonsmooth initialization. set it to 0.5e-6 for the PN junction test cases. // P-N interface at 0.5 μm
                 Real transition_width = 50e-9; // 50nm smooth transition width
                 Real distance_from_junction = z_pos - junction_z;
             
@@ -243,6 +245,70 @@ void InitializePandRho(Array<MultiFab, AMREX_SPACEDIM> &P_old,
                 donor_den_arr(i,j,k) = 0.0;
             }
 	});
+    */
+    amrex::ParallelFor( bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
+    {
+        // A small helper lambda to get initial doping and carrier values for a given mask ID.
+        // This makes the code cleaner and easier to read.
+        auto get_doping_and_carriers = [=] AMREX_GPU_DEVICE (amrex::Real mask_id, amrex::Real& Na, amrex::Real& Nd, amrex::Real& n, amrex::Real& p)
+        {
+            
+            if (mask_id == 2.0) { // intrinsic
+                Na = 0.0;
+                Nd = 0.0;
+                n = intrinsic_carrier_concentration;
+                p = intrinsic_carrier_concentration;
+            } else if (mask_id == 3.0) { // p-type
+                Na = acceptor_doping;
+                Nd = 0.0;
+                p = acceptor_doping;
+                n = intrinsic_carrier_concentration * intrinsic_carrier_concentration / p;
+            } else if (mask_id == 4.0) { // n-type
+                Na = 0.0;
+                Nd = donor_doping;
+                n = donor_doping;
+                p = intrinsic_carrier_concentration * intrinsic_carrier_concentration / n;
+            } else if (mask_id == 5.0) { // heavily doped p-type (p++)
+                Na = 5.0 * acceptor_doping;
+                Nd = 0.0;
+                p = Na;
+                n = intrinsic_carrier_concentration * intrinsic_carrier_concentration / p;
+            } else if (mask_id == 6.0) { // heavily doped n-type (n++)
+                Na = 0.0;
+                Nd = 5.0 * donor_doping;
+                n = Nd;
+                p = intrinsic_carrier_concentration * intrinsic_carrier_concentration / n;
+            } else { // Non-semiconductor regions
+                Na = 0.0;
+                Nd = 0.0;
+                n = 0.0;
+                p = 0.0;
+            }
+        };
+    
+        // SC region (mask >= 2.0 indicates semiconductor)
+        if (mask(i,j,k) >= 2.0) {
+    
+            amrex::Real Na_val, Nd_val, initial_n, initial_p;
+    
+            // Get the doping and carriers for the current cell's material based on the mask.
+            // The values are assigned directly without any smoothing or interpolation.
+            get_doping_and_carriers(mask(i,j,k), Na_val, Nd_val, initial_n, initial_p);
+    
+            // Assign initial carrier and doping concentrations to MultiFabs
+            hole_den_arr(i,j,k) = initial_p;
+            e_den_arr(i,j,k) = initial_n;
+            acceptor_den_arr(i,j,k) = Na_val;
+            donor_den_arr(i,j,k) = Nd_val;
+    
+        } else { // Non-semiconductor regions (e.g., oxide, metal contacts)
+            // Set carrier and doping densities to zero outside SC region
+            hole_den_arr(i,j,k) = 0.0;
+            e_den_arr(i,j,k) = 0.0;
+            acceptor_den_arr(i,j,k) = 0.0;
+            donor_den_arr(i,j,k) = 0.0;
+        }
+    });
     }
     // Fill boundaries for all MultiFabs
     e_den.FillBoundary(geom.periodicity());
@@ -251,7 +317,8 @@ void InitializePandRho(Array<MultiFab, AMREX_SPACEDIM> &P_old,
     donor_den.FillBoundary(geom.periodicity());
 
     for (MFIter mfi(rho); mfi.isValid(); ++mfi) {
-        const Box& bx = mfi.validbox();
+        //const Box& bx = mfi.validbox();
+        const Box& bx = mfi.growntilebox(1);
 
         const Array4<Real>& hole_den_arr = p_den.array(mfi);
         const Array4<Real>& e_den_arr = e_den.array(mfi);
@@ -363,6 +430,10 @@ void InitializeMaterialMask(c_FerroX& rFerroX, const Geometry& geom, MultiFab& M
         [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
         {
             eXstatic_MFab_Util::ConvertParserIntoMultiFab_3vars(i,j,k,dx,real_box,iv,macro_parser,mask_arr);
+	    //amrex::Print() << "mask(0,0,-1) = " << mask_arr(0,0,-1) << "\n";
+	    //amrex::Print() << "mask(0,0,0) = " << mask_arr(0,0,0) << "\n";
+	    //amrex::Print() << "mask(0,0,63) = " << mask_arr(0,0,63) << "\n";
+	    //amrex::Print() << "mask(0,0,64) = " << mask_arr(0,0,64) << "\n";
         });
 
     }
