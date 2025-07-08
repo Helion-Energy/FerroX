@@ -218,6 +218,17 @@ void CalculateDriftDiffusionCurrents(
                         
                         // Hole current
                         Jpx_arr(i, j, k) = -q * D_p / dx[0] * (p_den_arr(i+1,j,k) * Bern(-arg_p) - p_den_arr(i,j,k) * Bern(arg_p));
+   //                     if(k == 1 && j == 1 && (i == domain.bigEnd(0) || i == domain.bigEnd(0) - 1)){
+   //                         amrex::Real p_den_k = p_den_arr(i,j,k);
+   //                         amrex::Real p_den_kp1 = p_den_arr(i+1,j,k); // THIS IS THE CRITICAL VALUE TO CHECK
+   //                     
+   //                         amrex::Print() << "i = " << i << ", p_den_arr(k) = " << p_den_k << "\n";
+   //                         amrex::Print() << "i = " << i << ", p_den_arr(k+1) = " << p_den_kp1 << "\n";
+   //                         amrex::Print() << "i = " << i << ", phi_arr(k) = " << phi_p_arr(i,j,k) << "\n";
+   //                         amrex::Print() << "i = " << i << ", phi_arr(k+1) = " << phi_p_arr(i+1,j,k) << "\n";
+   //                         amrex::Print() << "i = " << i << ", Bern(-arg_p_z)  = " << Bern(-arg_p) << "\n";
+   //                         amrex::Print() << "i = " << i << ", Bern(arg_p_z)  = " << Bern(arg_p) << "\n";
+   //                     }
                     }
                 }
                 
@@ -496,6 +507,43 @@ void ComputeRho_DriftDiffusion(MultiFab&      PoissonPhi,
                     }
                 }
             }
+        });
+    }
+
+    // **NOW SET ZERO-CURRENT BOUNDARY CONDITIONS FOR X AND Y GHOST CELLS**
+    for (amrex::MFIter mfi(e_den); mfi.isValid(); ++mfi)
+    {
+        const amrex::Box& bx = mfi.tilebox(); // Use the tilebox for valid cells
+        amrex::Array4<amrex::Real> e_den_arr = e_den.array(mfi);
+        amrex::Array4<amrex::Real> p_den_arr = p_den.array(mfi);
+        const amrex::Box& grown_bx = mfi.growntilebox(1); // The box including ghost cells
+    
+        // Get domain bounds for x and y
+        const int domain_lo_x = geom.Domain().loVect()[0];
+        const int domain_hi_x = geom.Domain().hiVect()[0];
+        const int domain_lo_y = geom.Domain().loVect()[1];
+        const int domain_hi_y = geom.Domain().hiVect()[1];
+    
+        amrex::ParallelFor(grown_bx, [=] AMREX_GPU_HOST_DEVICE (int i, int j, int k)
+        {
+            // Handle x-direction ghost cells
+            if (i < domain_lo_x && i >= (domain_lo_x - 1)) { // Left ghost cell
+                e_den_arr(i, j, k) = e_den_arr(domain_lo_x, j, k);
+                p_den_arr(i, j, k) = p_den_arr(domain_lo_x, j, k);
+            } else if (i > domain_hi_x && i <= (domain_hi_x + 1)) { // Right ghost cell
+                e_den_arr(i, j, k) = e_den_arr(domain_hi_x, j, k);
+                p_den_arr(i, j, k) = p_den_arr(domain_hi_x, j, k);
+            }
+    
+            // Handle y-direction ghost cells
+            if (j < domain_lo_y && j >= (domain_lo_y - 1)) { // Bottom ghost cell
+                e_den_arr(i, j, k) = e_den_arr(i, domain_lo_y, k);
+                p_den_arr(i, j, k) = p_den_arr(i, domain_lo_y, k);
+            } else if (j > domain_hi_y && j <= (domain_hi_y + 1)) { // Top ghost cell
+                e_den_arr(i, j, k) = e_den_arr(i, domain_hi_y, k);
+                p_den_arr(i, j, k) = p_den_arr(i, domain_hi_y, k);
+            }
+    
         });
     }
 
