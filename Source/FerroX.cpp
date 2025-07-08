@@ -276,6 +276,7 @@ AMREX_GPU_MANAGED amrex::Real FerroX::Phi_Bc_hi;
 AMREX_GPU_MANAGED amrex::Real FerroX::Phi_Bc_inc;
 AMREX_GPU_MANAGED amrex::Real FerroX::Phi_Bc_hi_max;
 AMREX_GPU_MANAGED amrex::Real FerroX::phi_tolerance;
+AMREX_GPU_MANAGED amrex::Real FerroX::cathode_potential;
 AMREX_GPU_MANAGED int FerroX::random_seed;
 AMREX_GPU_MANAGED int FerroX::num_Vapp_max; //Maximum number of applied voltage points to sweep
 AMREX_GPU_MANAGED int FerroX::include_Landau;
@@ -431,6 +432,9 @@ void InitializeFerroXNamespace(const amrex::GpuArray<amrex::Real, AMREX_SPACEDIM
 
      phi_tolerance = 1.e-7;
      pp.query("phi_tolerance",phi_tolerance);
+
+     cathode_potential = 0.0;
+     pp.query("cathode_potential",cathode_potential);
 
      random_seed = 1;
      pp.query("random_seed",random_seed);

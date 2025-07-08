@@ -710,13 +710,13 @@ void SetPhiBC_z(MultiFab& PoissonPhi, MultiFab& MaterialMask,
                 if (mask(i,j,k) == 3.0 || mask(i,j,k) == 5.0) { // hi_z touches p-type
                     // Read local acceptor doping and use the applied voltage for the high face
                     amrex::Real local_doping = acceptor_den_arr(i, j, k);
-                    Phi(i,j,k) = calculate_local_bc(local_doping, Phi_Bc_hi, false);
+                    Phi(i,j,k) = calculate_local_bc(local_doping, Phi_Bc_hi, false); //gate region
 		    //if(i == 0 && j == 0) amrex::Print() << "p-type BC at k = " << k <<", mask = " << mask(0,0,k) << "Phi_BC = " << calculate_local_bc(local_doping, Phi_Bc_hi, false) << "\n";
 
                 } else if (mask(i,j,k) == 4.0 || mask(i,j,k) == 6.0) { // hi_z touches n-type
                     // Read local donor doping and use the applied voltage for the high face
                     amrex::Real local_doping = donor_den_arr(i, j, k);
-                    Phi(i,j,k) = calculate_local_bc(local_doping, Phi_Bc_hi, true);
+                    Phi(i,j,k) = calculate_local_bc(local_doping, cathode_potential, true); // cathode region
 		    //if(i == 0 && j == 0) amrex::Print() << "n-type BC at k = " << k <<", mask = " << mask(0,0,k) << "Phi_BC = " << calculate_local_bc(local_doping, Phi_Bc_hi, true) << "\n";
 
                 } else { // hi_z touches insulator or intrinsic SC or metal
