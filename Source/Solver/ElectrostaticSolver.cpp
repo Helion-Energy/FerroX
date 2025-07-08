@@ -603,17 +603,17 @@ void SetPhiBC_z(MultiFab& PoissonPhi, MultiFab& MaterialMask, const amrex::GpuAr
                 if (mask(i,j,k) == 3.0 || mask(i,j,k) == 5.0) { // lo_z touches p-type
     
                     Phi(i,j,k) = bc_values[1];
-		    if(i == 0 && j == 0) amrex::Print() << "p-type BC at k = " << k <<", mask = " << mask(0,0,k) << "\n";
+		    //if(i == 0 && j == 0) amrex::Print() << "p-type BC at k = " << k <<", mask = " << mask(0,0,k) << "\n";
 
                 } else if (mask(i,j,k) == 4.0 || mask(i,j,k) == 6.0) { // lo_z touches n-type
 
                     Phi(i,j,k) = bc_values[0];
-		    if(i == 0 && j == 0) amrex::Print() << "n-type BC at k = " << k <<", mask = " << mask(0,0,k) << "\n";
+		    //if(i == 0 && j == 0) amrex::Print() << "n-type BC at k = " << k <<", mask = " << mask(0,0,k) << "\n";
 
                 } else { // lo_z touches insulator or intrinsic SC or metal
 			 
                     Phi(i,j,k) = Phi_Bc_lo - (phi_m_V - phi_ref_V);
-		    if(i == 0 && j == 0) amrex::Print() << "insulator BC at k = " << k <<", mask = " << mask(0,0,k) << "\n";
+		    //if(i == 0 && j == 0) amrex::Print() << "insulator BC at k = " << k <<", mask = " << mask(0,0,k) << "\n";
 
                 }
             }
@@ -622,18 +622,18 @@ void SetPhiBC_z(MultiFab& PoissonPhi, MultiFab& MaterialMask, const amrex::GpuAr
             if (k >= n_cell[2]) {
                 if (mask(i,j,k) == 3.0 || mask(i,j,k) == 5.0) { // hi_z touches p-type
 
-		    if(i == 0 && j == 0) amrex::Print() << "p-type BC at k = " << k <<", mask = " << mask(0,0,k) << "\n";
+		    //if(i == 0 && j == 0) amrex::Print() << "p-type BC at k = " << k <<", mask = " << mask(0,0,k) << "\n";
                     Phi(i,j,k) = bc_values[1];
 
                 } else if (mask(i,j,k) == 4.0 || mask(i,j,k) == 6.0) { // hi_z touches n-type
 
                     Phi(i,j,k) = bc_values[0];
-		    if(i == 0 && j == 0) amrex::Print() << "n-type BC at k = " << k <<", mask = " << mask(0,0,k) << "\n";
+		    //if(i == 0 && j == 0) amrex::Print() << "n-type BC at k = " << k <<", mask = " << mask(0,0,k) << "\n";
 
                 } else { // hi_z touches insulator or intrinsic SC or metal
 
                     Phi(i,j,k) = Phi_Bc_hi - (phi_m_V - phi_ref_V);
-		    if(i == 0 && j == 0) amrex::Print() << "insulator BC at k = " << k <<", mask = " << mask(0,0,k) << "\n";
+		    //if(i == 0 && j == 0) amrex::Print() << "insulator BC at k = " << k <<", mask = " << mask(0,0,k) << "\n";
 		    
                 }
 	    }
@@ -711,13 +711,13 @@ void SetPhiBC_z(MultiFab& PoissonPhi, MultiFab& MaterialMask,
                     // Read local acceptor doping and use the applied voltage for the high face
                     amrex::Real local_doping = acceptor_den_arr(i, j, k);
                     Phi(i,j,k) = calculate_local_bc(local_doping, Phi_Bc_hi, false);
-		    if(i == 0 && j == 0) amrex::Print() << "p-type BC at k = " << k <<", mask = " << mask(0,0,k) << "Phi_BC = " << calculate_local_bc(local_doping, Phi_Bc_hi, false) << "\n";
+		    //if(i == 0 && j == 0) amrex::Print() << "p-type BC at k = " << k <<", mask = " << mask(0,0,k) << "Phi_BC = " << calculate_local_bc(local_doping, Phi_Bc_hi, false) << "\n";
 
                 } else if (mask(i,j,k) == 4.0 || mask(i,j,k) == 6.0) { // hi_z touches n-type
                     // Read local donor doping and use the applied voltage for the high face
                     amrex::Real local_doping = donor_den_arr(i, j, k);
                     Phi(i,j,k) = calculate_local_bc(local_doping, Phi_Bc_hi, true);
-		    if(i == 0 && j == 0) amrex::Print() << "n-type BC at k = " << k <<", mask = " << mask(0,0,k) << "Phi_BC = " << calculate_local_bc(local_doping, Phi_Bc_hi, true) << "\n";
+		    //if(i == 0 && j == 0) amrex::Print() << "n-type BC at k = " << k <<", mask = " << mask(0,0,k) << "Phi_BC = " << calculate_local_bc(local_doping, Phi_Bc_hi, true) << "\n";
 
                 } else { // hi_z touches insulator or intrinsic SC or metal
                     // Use the work function BC for these regions
