@@ -287,11 +287,11 @@ void main_main (c_FerroX& rFerroX)
 #ifdef AMREX_USE_EB
             ComputePhi_Rho_EB(pMLMG, p_mlebabec, alpha_cc, PoissonRHS, PoissonPhi, PoissonPhi_Prev, PhiErr,
                               P_old, charge_den, Jn, Jp, e_den, hole_den, acceptor_den, donor_den, MaterialMask,
-                              angle_alpha, angle_beta, angle_theta, geom, prob_lo, prob_hi);
+                              angle_alpha, angle_beta, angle_theta, geom, n_cell, rFerroX, prob_lo, prob_hi);
 #else
-            ComputePhi_Rho(pMLMG, p_mlabec, alpha_cc, PoissonRHS, PoissonPhi, PoissonPhi_Prev, PhiErr,
+            ComputePhi_Rho(pMLMG, p_mlabec, LinOpBCType_2d, alpha_cc, PoissonRHS, PoissonPhi, PoissonPhi_Prev, PhiErr,
                            P_old, charge_den, Jn, Jp, e_den, hole_den, acceptor_den, donor_den, MaterialMask,
-                           angle_alpha, angle_beta, angle_theta, geom, prob_lo, prob_hi);
+                           angle_alpha, angle_beta, angle_theta, geom, n_cell, rFerroX, time, prob_lo, prob_hi);
 #endif
 
             // Calculate E from Phi
@@ -332,9 +332,9 @@ void main_main (c_FerroX& rFerroX)
                                   P_new_pre, charge_den, Jn, Jp, e_den, hole_den, acceptor_den, donor_den, MaterialMask,
                                   angle_alpha, angle_beta, angle_theta, geom, prob_lo, prob_hi);
 #else
-                ComputePhi_Rho(pMLMG, p_mlabec, alpha_cc, PoissonRHS, PoissonPhi, PoissonPhi_Prev, PhiErr,
+                ComputePhi_Rho(pMLMG, p_mlabec, LinOpBCType_2d, alpha_cc, PoissonRHS, PoissonPhi, PoissonPhi_Prev, PhiErr,
                                P_new_pre, charge_den, Jn, Jp, e_den, hole_den, acceptor_den, donor_den, MaterialMask,
-                               angle_alpha, angle_beta, angle_theta, geom, prob_lo, prob_hi);
+                               angle_alpha, angle_beta, angle_theta, geom, n_cell, rFerroX, time, prob_lo, prob_hi);
 #endif
 
                 //update E using PoissonPhi computed with P_new_pre
@@ -403,9 +403,9 @@ void main_main (c_FerroX& rFerroX)
                                   ar_state, charge_den, Jn, Jp, e_den, hole_den, acceptor_den, donor_den, MaterialMask, 
                                   angle_alpha, angle_beta, angle_theta, geom, prob_lo, prob_hi);
 #else
-                ComputePhi_Rho(pMLMG, p_mlabec, alpha_cc, PoissonRHS, PoissonPhi, PoissonPhi_Prev, PhiErr,
+                ComputePhi_Rho(pMLMG, p_mlabec, LinOpBCType_2d, alpha_cc, PoissonRHS, PoissonPhi, PoissonPhi_Prev, PhiErr,
                                ar_state, charge_den, Jn, Jp, e_den, hole_den, acceptor_den, donor_den, MaterialMask, 
-                               angle_alpha, angle_beta, angle_theta, geom, prob_lo, prob_hi);
+                               angle_alpha, angle_beta, angle_theta, geom, n_cell, rFerroX, time, prob_lo, prob_hi);
 #endif
 
                 ComputeEfromPhi(PoissonPhi, E, angle_alpha, angle_beta, angle_theta, geom, prob_lo, prob_hi);
@@ -476,9 +476,9 @@ void main_main (c_FerroX& rFerroX)
                                   ar_state, charge_den, Jn, Jp, e_den, hole_den, acceptor_den, donor_den, MaterialMask, 
                                   angle_alpha, angle_beta, angle_theta, geom, prob_lo, prob_hi);
 #else
-                ComputePhi_Rho(pMLMG, p_mlabec, alpha_cc, PoissonRHS, PoissonPhi, PoissonPhi_Prev, PhiErr,
+                ComputePhi_Rho(pMLMG, p_mlabec, LinOpBCType_2d, alpha_cc, PoissonRHS, PoissonPhi, PoissonPhi_Prev, PhiErr,
                                ar_state, charge_den, Jn, Jp, e_den, hole_den, acceptor_den, donor_den, MaterialMask, 
-                               angle_alpha, angle_beta, angle_theta, geom, prob_lo, prob_hi);
+                               angle_alpha, angle_beta, angle_theta, geom, n_cell, rFerroX, time, prob_lo, prob_hi);
 #endif
 
                 ComputeEfromPhi(PoissonPhi, E, angle_alpha, angle_beta, angle_theta, geom, prob_lo, prob_hi);
@@ -567,7 +567,7 @@ void main_main (c_FerroX& rFerroX)
 	}
 
         // Check if steady state has reached 
-        CheckSteadyState(PoissonPhi, PoissonPhi_Old, Phidiff, phi_tolerance, step, steady_state_step, inc_step); // Calculate E from Phi
+    //    CheckSteadyState(PoissonPhi, PoissonPhi_Old, Phidiff, phi_tolerance, step, steady_state_step, inc_step); // Calculate E from Phi
         ComputeEfromPhi(PoissonPhi, E, angle_alpha, angle_beta, angle_theta, geom, prob_lo, prob_hi);
 
         Real step_stop_time = ParallelDescriptor::second() - step_strt_time;
@@ -602,8 +602,8 @@ void main_main (c_FerroX& rFerroX)
             amrex::Print() << "step = " << step << ", Phi_Bc_hi = " << Phi_Bc_hi << ", num_Vapp = " << num_Vapp << ", sign = " << sign << std::endl;
 
             // Set Dirichlet BC for Phi in z
-            //SetPhiBC_z(PoissonPhi, MaterialMask, n_cell, geom);
-            SetPhiBC_z(PoissonPhi, MaterialMask, acceptor_den, donor_den, n_cell, geom);
+            SetPhiBC_z(PoissonPhi, MaterialMask, n_cell, geom);
+            //SetPhiBC_z(PoissonPhi, MaterialMask, acceptor_den, donor_den, n_cell, geom);
 
            // set Dirichlet BC by reading in the ghost cell values
 #ifdef AMREX_USE_EB
@@ -626,9 +626,9 @@ void main_main (c_FerroX& rFerroX)
                    P_old, charge_den, Jn, Jp, e_den, hole_den, acceptor_den, donor_den, MaterialMask, 
                    angle_alpha, angle_beta, angle_theta, geom, prob_lo, prob_hi);
 #else
-           ComputePhi_Rho(pMLMG, p_mlabec, alpha_cc, PoissonRHS, PoissonPhi, PoissonPhi_Prev, PhiErr,
+           ComputePhi_Rho(pMLMG, p_mlabec, LinOpBCType_2d, alpha_cc, PoissonRHS, PoissonPhi, PoissonPhi_Prev, PhiErr,
                    P_old, charge_den, Jn, Jp, e_den, hole_den, acceptor_den, donor_den, MaterialMask, 
-                   angle_alpha, angle_beta, angle_theta, geom, prob_lo, prob_hi);
+                   angle_alpha, angle_beta, angle_theta, geom, n_cell, rFerroX, time, prob_lo, prob_hi);
 #endif
         }//end inc_step	
    

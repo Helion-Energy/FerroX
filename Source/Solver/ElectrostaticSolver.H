@@ -69,7 +69,7 @@ void ComputePoissonRHS_Newton(MultiFab& PoissonRHS,
 //void SetPhiBC_z(MultiFab& PossonPhi, const amrex::GpuArray<int, AMREX_SPACEDIM>& n_cell, const Geometry& geom);
 void SetPhiBC_z(MultiFab& PoissonPhi, MultiFab& MaterialMask, const amrex::GpuArray<int, AMREX_SPACEDIM>& n_cell, const Geometry& geom);
 
-void SetPhiBC_z(MultiFab& PoissonPhi, MultiFab& MaterialMask,
+void ApplyOhmicContacts(MultiFab& PoissonPhi, MultiFab& MaterialMask,
                 const MultiFab& acceptor_den_mf, const MultiFab& donor_den_mf,
                 const amrex::GpuArray<int, AMREX_SPACEDIM>& n_cell,
                 const Geometry& geom);
@@ -103,6 +103,7 @@ void SetupMLMG_EB(std::unique_ptr<amrex::MLMG>& pMLMG,
 
 void ComputePhi_Rho(std::unique_ptr<amrex::MLMG>& pMLMG, 
              std::unique_ptr<amrex::MLABecLaplacian>& p_mlabec,
+             std::array<std::array<amrex::LinOpBCType,AMREX_SPACEDIM>,2>& LinOpBCType_2d,
              MultiFab&            alpha_cc,
              MultiFab&            PoissonRHS, 
              MultiFab&            PoissonPhi, 
@@ -119,6 +120,9 @@ void ComputePhi_Rho(std::unique_ptr<amrex::MLMG>& pMLMG,
 	     MultiFab&            MaterialMask,
              MultiFab& angle_alpha, MultiFab& angle_beta, MultiFab& angle_theta,
              const          Geometry& geom,
+             const amrex::GpuArray<int, AMREX_SPACEDIM>& n_cell,
+	     c_FerroX& rFerroX,
+	     amrex::Real& time,
 	     const amrex::GpuArray<amrex::Real, AMREX_SPACEDIM>& prob_lo,
              const amrex::GpuArray<amrex::Real, AMREX_SPACEDIM>& prob_hi);
 

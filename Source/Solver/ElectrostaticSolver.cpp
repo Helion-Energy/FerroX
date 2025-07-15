@@ -373,57 +373,67 @@ void Fill_Constant_Inhomogeneous_Boundaries(c_FerroX& rFerroX, MultiFab& Poisson
     auto& bcAny_2d = rBC.bcAny_2d;
     auto& map_bcAny_2d = rBC.map_bcAny_2d;
 
-    std::vector<int> dir_inhomo_const_lo;
+    std::vector<int> dir_inhomo_const_lo, dir_inhomo_const_hi;
     std::string value = "inhomogeneous_constant";
     bool found_lo = findByValue(dir_inhomo_const_lo, map_bcAny_2d[0], value);
-    std::vector<int> dir_inhomo_const_hi;
     bool found_hi = findByValue(dir_inhomo_const_hi, map_bcAny_2d[1], value);
 
-    int len = 1;
-    for (MFIter mfi(PoissonPhi, TilingIfNotGPU()); mfi.isValid(); ++mfi)
+    // Use MFIter without tiling for boundary operations
+    for (MFIter mfi(PoissonPhi, false); mfi.isValid(); ++mfi)
     {
         const auto& phi_arr = PoissonPhi.array(mfi);
+        const auto& validbox = mfi.validbox();
 
-        const auto& bx = mfi.tilebox();
-        
         if(found_lo) {
-            for (auto dir : dir_inhomo_const_lo) 
-	    {
-                if (bx.smallEnd(dir) == domain.smallEnd(dir)) 
-		{
-	            auto value = std::any_cast<amrex::Real>(bcAny_2d[0][dir]);		
-                    Box const& bxlo = amrex::adjCellLo(bx, dir,len);
-                    amrex::ParallelFor(bxlo,
-                    [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-                    {
-                        phi_arr(i,j,k) = value;
-                    });
-                }
-            }
-        }
-        if(found_hi) {
-            for (auto dir : dir_inhomo_const_hi) 
-	    {
-                if (bx.bigEnd(dir) == domain.bigEnd(dir)) 
-		{
-		    auto value = std::any_cast<amrex::Real>(bcAny_2d[1][dir]);	
-                    Box const& bxhi = amrex::adjCellHi(bx, dir,len);
-                    amrex::ParallelFor(bxhi,
-                    [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-                    {
-                        phi_arr(i,j,k) = value;
-                    });
-                }
-            }
-        }
-    } 
+            for (auto dir : dir_inhomo_const_lo)
+            {
+                if (validbox.smallEnd(dir) == domain.smallEnd(dir))
+                {
+                    auto bc_value = std::any_cast<amrex::Real>(bcAny_2d[0][dir]);
 
+                    // Create ghost box for all ghost cells on low side
+                    Box ghostbox = validbox;
+                    ghostbox.setSmall(dir, domain.smallEnd(dir) - PoissonPhi.nGrowVect()[dir]);
+                    ghostbox.setBig(dir, domain.smallEnd(dir) - 1);
+
+                    amrex::ParallelFor(ghostbox,
+                    [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                    {
+                        phi_arr(i,j,k) = bc_value;
+                    });
+                }
+            }
+        }
+
+        if(found_hi) {
+            for (auto dir : dir_inhomo_const_hi)
+            {
+                if (validbox.bigEnd(dir) == domain.bigEnd(dir))
+                {
+                    auto bc_value = std::any_cast<amrex::Real>(bcAny_2d[1][dir]);
+
+                    // Create ghost box for all ghost cells on high side
+                    Box ghostbox = validbox;
+                    ghostbox.setSmall(dir, domain.bigEnd(dir) + 1);
+                    ghostbox.setBig(dir, domain.bigEnd(dir) + PoissonPhi.nGrowVect()[dir]);
+
+                    amrex::ParallelFor(ghostbox,
+                    [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                    {
+                        phi_arr(i,j,k) = bc_value;
+                    });
+                }
+            }
+        }
+    }
 }
+
+
+
 void Fill_FunctionBased_Inhomogeneous_Boundaries(c_FerroX& rFerroX, MultiFab& PoissonPhi, amrex::Real& time)
 {
     auto& rGprop = rFerroX.get_GeometryProperties();
     Box const& domain = rGprop.geom.Domain();
-
     const auto dx = rGprop.geom.CellSizeArray();
     const auto& real_box = rGprop.geom.ProbDomain();
     const auto iv = PoissonPhi.ixType().toIntVect();
@@ -432,77 +442,88 @@ void Fill_FunctionBased_Inhomogeneous_Boundaries(c_FerroX& rFerroX, MultiFab& Po
     auto& bcAny_2d = rBC.bcAny_2d;
     auto& map_bcAny_2d = rBC.map_bcAny_2d;
 
-    std::vector<int> dir_inhomo_func_lo;
+    // Get directions with function-based boundaries
+    std::vector<int> dir_inhomo_func_lo, dir_inhomo_func_hi;
     std::string value = "inhomogeneous_function";
     bool found_lo = findByValue(dir_inhomo_func_lo, map_bcAny_2d[0], value);
-    std::vector<int> dir_inhomo_func_hi;
     bool found_hi = findByValue(dir_inhomo_func_hi, map_bcAny_2d[1], value);
 
-    for (MFIter mfi(PoissonPhi, TilingIfNotGPU()); mfi.isValid(); ++mfi)
+    // Use MFIter without tiling for boundary operations
+    for (MFIter mfi(PoissonPhi, false); mfi.isValid(); ++mfi)
     {
         const auto& soln_arr = PoissonPhi.array(mfi);
-        const auto& bx = mfi.tilebox();
-        
+        const auto& validbox = mfi.validbox();
+
         /*for low sides*/
         if(found_lo)
         {
-            for (auto dir : dir_inhomo_func_lo) //looping over boundaries of type inhomogeneous_function
+            for (auto dir : dir_inhomo_func_lo)
             {
-                if (bx.smallEnd(dir) == domain.smallEnd(dir)) //work with a box that adjacent to the domain boundary
-                { 
-                    Box const& bxlo = amrex::adjCellLo(bx, dir);
+                if (validbox.smallEnd(dir) == domain.smallEnd(dir))
+                {
+                    // Create ghost box for all ghost cells on low side
+                    Box ghostbox = validbox;
+                    ghostbox.setSmall(dir, domain.smallEnd(dir) - PoissonPhi.nGrowVect()[dir]);
+                    ghostbox.setBig(dir, domain.smallEnd(dir) - 1);
+
                     std::string macro_str = std::any_cast<std::string>(bcAny_2d[0][dir]);
-
                     auto pParser = rBC.get_p_parser(macro_str);
-		    #ifdef TIME_DEPENDENT
-		        const auto& macro_parser = pParser->compile<4>();
-		    #else
-		        const auto& macro_parser = pParser->compile<3>();
-		    #endif
 
-                    amrex::ParallelFor(bxlo,
+                    #ifdef TIME_DEPENDENT
+                        const auto& macro_parser = pParser->compile<4>();
+                    #else
+                        const auto& macro_parser = pParser->compile<3>();
+                    #endif
+
+                    amrex::ParallelFor(ghostbox,
                     [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                     {
-		        #ifdef TIME_DEPENDENT
-                            eXstatic_MFab_Util::ConvertParserIntoMultiFab_4vars(i,j,k,time,dx,real_box,iv,macro_parser,soln_arr);  
-		        #else
-                            eXstatic_MFab_Util::ConvertParserIntoMultiFab_3vars(i,j,k,dx,real_box,iv,macro_parser,soln_arr);  
+                        #ifdef TIME_DEPENDENT
+                            eXstatic_MFab_Util::ConvertParserIntoMultiFab_4vars(i,j,k,time,dx,real_box,iv,macro_parser,soln_arr);
+                        #else
+                            eXstatic_MFab_Util::ConvertParserIntoMultiFab_3vars(i,j,k,dx,real_box,iv,macro_parser,soln_arr);
                         #endif
                     });
                 }
             }
         }
-	if(found_hi)
+
+        /*for high sides*/
+        if(found_hi)
         {
-            for (auto dir : dir_inhomo_func_hi) //looping over boundaries of type inhomogeneous_function
+            for (auto dir : dir_inhomo_func_hi)
             {
-                if (bx.bigEnd(dir) == domain.bigEnd(dir)) //work with a box that adjacent to the domain boundary
+                if (validbox.bigEnd(dir) == domain.bigEnd(dir))
                 {
-                    Box const& bxhi = amrex::adjCellHi(bx, dir);
-		    std::string macro_str = std::any_cast<std::string>(bcAny_2d[1][dir]);
+                    // Create ghost box for all ghost cells on high side
+                    Box ghostbox = validbox;
+                    ghostbox.setSmall(dir, domain.bigEnd(dir) + 1);
+                    ghostbox.setBig(dir, domain.bigEnd(dir) + PoissonPhi.nGrowVect()[dir]);
 
-                        auto pParser = rBC.get_p_parser(macro_str);
-			#ifdef TIME_DEPENDENT
-			    const auto& macro_parser = pParser->compile<4>();
-			#else
-			    const auto& macro_parser = pParser->compile<3>();
-			#endif
+                    std::string macro_str = std::any_cast<std::string>(bcAny_2d[1][dir]);
+                    auto pParser = rBC.get_p_parser(macro_str);
 
-                        amrex::ParallelFor(bxhi,
-                        [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-                        {
-		            #ifdef TIME_DEPENDENT
-                                eXstatic_MFab_Util::ConvertParserIntoMultiFab_4vars(i,j,k,time,dx,real_box,iv,macro_parser,soln_arr);
-		            #else
-                                eXstatic_MFab_Util::ConvertParserIntoMultiFab_3vars(i,j,k,dx,real_box,iv,macro_parser,soln_arr);
-                            #endif
-                        });
-	        }
+                    #ifdef TIME_DEPENDENT
+                        const auto& macro_parser = pParser->compile<4>();
+                    #else
+                        const auto& macro_parser = pParser->compile<3>();
+                    #endif
+
+                    amrex::ParallelFor(ghostbox,
+                    [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                    {
+                        #ifdef TIME_DEPENDENT
+                            eXstatic_MFab_Util::ConvertParserIntoMultiFab_4vars(i,j,k,time,dx,real_box,iv,macro_parser,soln_arr);
+                        #else
+                            eXstatic_MFab_Util::ConvertParserIntoMultiFab_3vars(i,j,k,dx,real_box,iv,macro_parser,soln_arr);
+                        #endif
+                    });
+                }
             }
         }
-
     }
 }
+
 
 // Approximation to the inverse of the Fermi-Dirac Integral of Order 1/2
 AMREX_GPU_HOST_DEVICE AMREX_INLINE
@@ -642,7 +663,7 @@ void SetPhiBC_z(MultiFab& PoissonPhi, MultiFab& MaterialMask, const amrex::GpuAr
     PoissonPhi.FillBoundary(geom.periodicity());
 }
 
-void SetPhiBC_z(MultiFab& PoissonPhi, MultiFab& MaterialMask,
+void ApplyOhmicContacts(MultiFab& PoissonPhi, MultiFab& MaterialMask,
                 const MultiFab& acceptor_den_mf, const MultiFab& donor_den_mf,
                 const amrex::GpuArray<int, AMREX_SPACEDIM>& n_cell,
                 const Geometry& geom)
@@ -801,22 +822,18 @@ void SetupMLMG(std::unique_ptr<amrex::MLMG>& pMLMG,
 
     SetPoissonBC(rFerroX, LinOpBCType_2d, all_homogeneous_boundaries, some_functionbased_inhomogeneous_boundaries, some_constant_inhomogeneous_boundaries);
 
-    //if(some_constant_inhomogeneous_boundaries)
-    //{
-    //    Fill_Constant_Inhomogeneous_Boundaries(rFerroX, PoissonPhi);
-    //}
-    //if(some_functionbased_inhomogeneous_boundaries)
-    //{
-    //    Fill_FunctionBased_Inhomogeneous_Boundaries(rFerroX, PoissonPhi, time);
-    //}
-    //PoissonPhi.FillBoundary(geom.periodicity());
+    if(some_constant_inhomogeneous_boundaries)
+    {
+        Fill_Constant_Inhomogeneous_Boundaries(rFerroX, PoissonPhi);
+    }
+    if(some_functionbased_inhomogeneous_boundaries)
+    {
+        Fill_FunctionBased_Inhomogeneous_Boundaries(rFerroX, PoissonPhi, time);
+    }
+    PoissonPhi.FillBoundary(geom.periodicity());
 
-    // For now only this option implements Ohmic contacts and metal work function 
-    // set Dirichlet BC by reading in the ghost cell values
-    //if(some_constant_inhomogeneous_boundaries){
-       //SetPhiBC_z(PoissonPhi, MaterialMask, n_cell, geom);
-       SetPhiBC_z(PoissonPhi, MaterialMask, acceptor_den, donor_den, n_cell, geom);
-    //}
+    // Apply Ohmic contact / metal workfunction corrections 
+    ApplyOhmicContacts(PoissonPhi, MaterialMask, acceptor_den, donor_den, n_cell, geom);
 
     p_mlabec->setLevelBC(amrlev, &PoissonPhi);
     
@@ -862,18 +879,20 @@ void SetupMLMG(std::unique_ptr<amrex::MLMG>& pMLMG,
     // assign domain boundary conditions to the solver
     p_mlebabec->setDomainBC(LinOpBCType_2d[0], LinOpBCType_2d[1]);
 
-    //if(some_constant_inhomogeneous_boundaries)
-    //{
-    //    Fill_Constant_Inhomogeneous_Boundaries(rFerroX, PoissonPhi);
-    //}
-    //if(some_functionbased_inhomogeneous_boundaries)
-    //{
-    //    Fill_FunctionBased_Inhomogeneous_Boundaries(rFerroX, PoissonPhi, time);
-    //}
-    //PoissonPhi.FillBoundary(geom.periodicity());
+    SetPoissonBC(rFerroX, LinOpBCType_2d, all_homogeneous_boundaries, some_functionbased_inhomogeneous_boundaries, some_constant_inhomogeneous_boundaries);
+    
+    if(some_constant_inhomogeneous_boundaries)
+    {
+        Fill_Constant_Inhomogeneous_Boundaries(rFerroX, PoissonPhi);
+    }
+    if(some_functionbased_inhomogeneous_boundaries)
+    {
+        Fill_FunctionBased_Inhomogeneous_Boundaries(rFerroX, PoissonPhi, time);
+    }
+    PoissonPhi.FillBoundary(geom.periodicity());
 
     // Set Dirichlet BC for Phi in z
-    SetPhiBC_z(PoissonPhi, MaterialMask, n_cell, geom); 
+    //SetPhiBC_z(PoissonPhi, MaterialMask, n_cell, geom); 
     p_mlebabec->setLevelBC(amrlev, &PoissonPhi);
     
     // (A*alpha_cc - B * div beta grad) phi = rhs
@@ -974,6 +993,7 @@ void ComputePhi_Rho_Equilibrium(std::unique_ptr<amrex::MLMG>& pMLMG,
 
 void ComputePhi_Rho(std::unique_ptr<amrex::MLMG>& pMLMG, 
              std::unique_ptr<amrex::MLABecLaplacian>& p_mlabec,
+             std::array<std::array<amrex::LinOpBCType,AMREX_SPACEDIM>,2>& LinOpBCType_2d,
              MultiFab&            alpha_cc,
              MultiFab&            PoissonRHS, 
              MultiFab&            PoissonPhi, 
@@ -990,6 +1010,9 @@ void ComputePhi_Rho(std::unique_ptr<amrex::MLMG>& pMLMG,
 	     MultiFab&            MaterialMask,
              MultiFab& angle_alpha, MultiFab& angle_beta, MultiFab& angle_theta,
              const          Geometry& geom,
+             const amrex::GpuArray<int, AMREX_SPACEDIM>& n_cell,
+	     c_FerroX& rFerroX,
+	     amrex::Real& time,
 	     const amrex::GpuArray<amrex::Real, AMREX_SPACEDIM>& prob_lo,
              const amrex::GpuArray<amrex::Real, AMREX_SPACEDIM>& prob_hi)
 
@@ -999,6 +1022,31 @@ void ComputePhi_Rho(std::unique_ptr<amrex::MLMG>& pMLMG,
 
         p_mlabec->setACoeffs(0, alpha_cc);
 
+        bool all_homogeneous_boundaries = true;
+        bool some_functionbased_inhomogeneous_boundaries = false;
+        bool some_constant_inhomogeneous_boundaries = false;
+        int amrlev = 0; //refers to the setcoarsest level of the solve
+    
+        // assign domain boundary conditions to the solver
+        p_mlabec->setDomainBC(LinOpBCType_2d[0], LinOpBCType_2d[1]);
+
+        SetPoissonBC(rFerroX, LinOpBCType_2d, all_homogeneous_boundaries, some_functionbased_inhomogeneous_boundaries, some_constant_inhomogeneous_boundaries);
+
+    	if(some_constant_inhomogeneous_boundaries)
+        {
+            Fill_Constant_Inhomogeneous_Boundaries(rFerroX, PoissonPhi);
+        }
+        if(some_functionbased_inhomogeneous_boundaries)
+        {
+            Fill_FunctionBased_Inhomogeneous_Boundaries(rFerroX, PoissonPhi, time);
+        }
+        PoissonPhi.FillBoundary(geom.periodicity());
+
+        // Apply Ohmic contact / metal workfunction corrections 
+        ApplyOhmicContacts(PoissonPhi, MaterialMask, acceptor_den, donor_den, n_cell, geom);
+
+        p_mlabec->setLevelBC(amrlev, &PoissonPhi);
+    
         //Initial guess for phi
         PoissonPhi.setVal(0.);
 
