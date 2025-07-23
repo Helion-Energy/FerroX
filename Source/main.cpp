@@ -152,11 +152,16 @@ void main_main (c_FerroX& rFerroX)
     MultiFab Ey(ba, dm, 1, 0);
     MultiFab Ez(ba, dm, 1, 0);
 
+    MultiFab carrier_den(ba, dm, 2, 1);  // nComp = 2
+    MultiFab carrier_rhs(ba, dm, 2, 1);
+
     MultiFab hole_den(ba, dm, 1, 1);
     MultiFab e_den(ba, dm, 1, 1);
     MultiFab acceptor_den(ba, dm, 1, 1);
     MultiFab donor_den(ba, dm, 1, 1);
     MultiFab charge_den(ba, dm, 1, 1);
+    MultiFab e_rhs(ba, dm, 1, 1);
+    MultiFab p_rhs(ba, dm, 1, 1);
     MultiFab MaterialMask(ba, dm, 1, 1);
     MultiFab tphaseMask(ba, dm, 1, 1);
     MultiFab angle_alpha(ba, dm, 1, 0);
@@ -176,10 +181,14 @@ void main_main (c_FerroX& rFerroX)
         Jp[dir].setVal(0.);
     }
 
+    carrier_den.setVal(0.);
+    carrier_rhs.setVal(0.);
     e_den.setVal(0.);
     hole_den.setVal(0.);
     acceptor_den.setVal(0.);
     donor_den.setVal(0.);
+    e_rhs.setVal(0.);
+    p_rhs.setVal(0.);
     PoissonPhi.setVal(0.);
     PoissonRHS.setVal(0.);
     tphaseMask.setVal(0.);
@@ -225,6 +234,10 @@ void main_main (c_FerroX& rFerroX)
     //InitializePandRho(P_old, Gamma, charge_den, e_den, hole_den, geom, prob_lo, prob_hi);//old
     InitializePandRho(P_old, Gamma, charge_den, e_den, hole_den, acceptor_den, donor_den, MaterialMask, tphaseMask, n_cell, geom, prob_lo, prob_hi);//mask based
 
+    //for sundials 
+    MultiFab::Copy(carrier_den, e_den, 0, 0, 1, 1);
+    MultiFab::Copy(carrier_den, hole_den, 0, 1, 1, 1);
+
     //ComputePhi_Rho_Equilibrium(pMLMG, p_mlabec, alpha_cc, PoissonRHS, PoissonPhi, PoissonPhi_Prev, PhiErr,
     //               P_old, charge_den, Jn, Jp, e_den, hole_den, acceptor_den, donor_den, MaterialMask,
     //               angle_alpha, angle_beta, angle_theta, geom, prob_lo, prob_hi);
@@ -262,19 +275,24 @@ void main_main (c_FerroX& rFerroX)
     Real tiny = 1.e-6;    
  
 #ifdef AMREX_USE_SUNDIALS
-//
-//    std::string theStrategy;
-//    amrex::ParmParse pp("integration.sundials");
-//    pp.get("strategy", theStrategy);
-//
-    amrex::Vector<MultiFab> vP_old(AMREX_SPACEDIM);
-    amrex::Vector<MultiFab> vP_new(AMREX_SPACEDIM);
-    for (int idim = 0; idim < AMREX_SPACEDIM; ++idim) {
-        vP_old[idim] = MultiFab(P_old[idim],amrex::make_alias,0,P_old[idim].nComp());
-        vP_new[idim] = MultiFab(P_new[idim],amrex::make_alias,0,P_new[idim].nComp());
-    }
-    
-    TimeIntegrator<Vector<MultiFab> > integrator(vP_old);
+
+    TimeIntegrator<MultiFab> integrator(carrier_den);
+
+
+    // use adaptive time step (dt used to set output times)
+    bool adapt_dt = false;
+
+    // adaptive time step relative and absolute tolerances
+    Real reltol = 1.0e-4;
+    Real abstol = 1.0e-9;
+
+    ParmParse pp;
+    // use adaptive step sizes
+    pp.query("adapt_dt",adapt_dt);
+
+    // adaptive step tolerances
+    pp.query("reltol",reltol);
+    pp.query("abstol",abstol);
 
 #endif
 
@@ -370,205 +388,62 @@ void main_main (c_FerroX& rFerroX)
 	} else { //using sundials
 
 #ifdef AMREX_USE_SUNDIALS
-		// Create a RHS source function we will integrate
-            	// for MRI this represents the slow processes
-            	auto rhs_fun = [&](Vector<MultiFab>& rhs, const Vector<MultiFab>& state, const Real& time ) {
-                
-                BL_PROFILE_VAR("rhs_fun()",rhs_fast_fun);
-
-                Print() << "Calling rhs_fun at time = " << time << "\n";
- 
-                // User function to calculate the rhs MultiFab given the state MultiFab
-                for (int idim = 0; idim < AMREX_SPACEDIM; ++idim) {
-                    rhs[idim].setVal(0.);
-                } 
-
-	        //alias rhs and state from vector of MultiFabs amrex::Vector<MultiFab> into Array<MultiFab, AMREX_SPACEDIM>
-		//This is needed since CalculateH_* and Compute_LLG_RHS function take Array<MultiFab, AMREX_SPACEDIM> as input param
-
-                Array<MultiFab, AMREX_SPACEDIM> ar_rhs{AMREX_D_DECL(MultiFab(rhs[0],amrex::make_alias,0,rhs[0].nComp()),
-		                                                    MultiFab(rhs[1],amrex::make_alias,0,rhs[1].nComp()),
-			       			                    MultiFab(rhs[2],amrex::make_alias,0,rhs[2].nComp()))};
-
-                Array<MultiFab, AMREX_SPACEDIM> ar_state{AMREX_D_DECL(MultiFab(state[0],amrex::make_alias,0,state[0].nComp()),
-                                                                      MultiFab(state[1],amrex::make_alias,0,state[1].nComp()),
-                                                                      MultiFab(state[2],amrex::make_alias,0,state[2].nComp()))};
-
-		for (int comp = 0; comp < 3; comp++) {
-                    ar_state[comp].FillBoundary(geom.periodicity());
-		}
 
 #ifdef AMREX_USE_EB
-                ComputePhi_Rho_EB(pMLMG, p_mlebabec, alpha_cc, PoissonRHS, PoissonPhi, PoissonPhi_Prev, PhiErr,
-                                  ar_state, charge_den, Jn, Jp, e_den, hole_den, acceptor_den, donor_den, MaterialMask, 
-                                  angle_alpha, angle_beta, angle_theta, geom, prob_lo, prob_hi);
+            ComputePhi_Rho_EB(pMLMG, p_mlebabec, alpha_cc, PoissonRHS, PoissonPhi, PoissonPhi_Prev, PhiErr,
+                          P_old, charge_den, Jn, Jp, e_den, hole_den, acceptor_den, donor_den, MaterialMask,
+                          angle_alpha, angle_beta, angle_theta, geom, n_cell, rFerroX, prob_lo, prob_hi);
 #else
-                ComputePhi_Rho(pMLMG, p_mlabec, LinOpBCType_2d, alpha_cc, PoissonRHS, PoissonPhi, PoissonPhi_Prev, PhiErr,
-                               ar_state, charge_den, Jn, Jp, e_den, hole_den, acceptor_den, donor_den, MaterialMask, 
-                               angle_alpha, angle_beta, angle_theta, geom, n_cell, rFerroX, time, prob_lo, prob_hi);
+            ComputePhi(pMLMG, p_mlabec, LinOpBCType_2d, alpha_cc, PoissonRHS, PoissonPhi, PoissonPhi_Prev, PhiErr,
+                       P_old, charge_den, Jn, Jp, e_den, hole_den, acceptor_den, donor_den, MaterialMask,
+                       angle_alpha, angle_beta, angle_theta, geom, n_cell, rFerroX, time, prob_lo, prob_hi);
 #endif
 
-                ComputeEfromPhi(PoissonPhi, E, angle_alpha, angle_beta, angle_theta, geom, prob_lo, prob_hi);
+            ComputeEfromPhi(PoissonPhi, E, angle_alpha, angle_beta, angle_theta, geom, prob_lo, prob_hi);
 
-                if (include_Landau == 1){
-                   if(using_MRI && fast_Landau == 1){ 
-                      for (int idim=0; idim<AMREX_SPACEDIM; ++idim) {
-                             GL_rhs_Landau[idim].setVal(0.);
-                      }
-                   } else {
-                      Calculate_Landau(GL_rhs_Landau, ar_state, Gamma, tphaseMask);
-                   }
-                }   
-                if (include_Grad == 1){ 
-                   if(using_MRI && fast_Grad == 1){
-                      for (int idim=0; idim<AMREX_SPACEDIM; ++idim) {
-                             GL_rhs_grad[idim].setVal(0.);
-                      }
-                   } else {
-                      Calculate_Grad(GL_rhs_grad, ar_state, Gamma, MaterialMask, tphaseMask, angle_alpha, angle_beta, angle_theta, geom);
-                   }
-                }   
-                if (include_Elec == 1){ 
-                   if(using_MRI && fast_Elec == 1){
-                      for (int idim=0; idim<AMREX_SPACEDIM; ++idim) {
-                             GL_rhs_elec[idim].setVal(0.);
-                      }
-                   } else {
-                      Calculate_Elec(GL_rhs_elec, E, Gamma, tphaseMask);
-                   }
-                }   
+            // Create a RHS source function we will integrate
+            // for MRI this represents the slow processes
+            auto rhs_fun = [&](MultiFab& rhs, const MultiFab& state, const Real& time) {
+               BL_PROFILE_VAR("rhs_fun()", rhs_fun);
 
-                // Compute f^n = f(P^n, E^n) 
-        	CalculateTDGL_RHS(ar_rhs, GL_rhs_Landau, GL_rhs_grad, GL_rhs_elec, ar_state, E, Gamma, MaterialMask, tphaseMask, angle_alpha, angle_beta, angle_theta, geom);
+               rhs.setVal(0.);
+	       MultiFab tmp_state(state, amrex::make_alias, 0, 2);
+               tmp_state.FillBoundary(geom.periodicity());
 
+               MultiFab e_den(state, amrex::make_alias, 0, 1);
+               MultiFab p_den(state, amrex::make_alias, 1, 1);
+               MultiFab e_rhs(rhs, amrex::make_alias, 0, 1);
+               MultiFab p_rhs(rhs, amrex::make_alias, 1, 1);
 
-                };
-
-                // Create a fast RHS source function we will integrate
-            	auto rhs_fast_fun = [&](Vector<MultiFab>& rhs, const Vector<MultiFab>& state, const Real& time) {
-               
-                BL_PROFILE_VAR("rhs_fast_fun()",rhs_fast_fun);
-
-                Print() << "Calling rhs_fast_fun at time = " << time << "\n";
- 
-                // User function to calculate the rhs MultiFab given the state MultiFab
-                for (int idim = 0; idim < AMREX_SPACEDIM; ++idim) {
-                    rhs[idim].setVal(0.);
-                } 
-
-	        //alias rhs and state from vector of MultiFabs amrex::Vector<MultiFab> into Array<MultiFab, AMREX_SPACEDIM>
-		//This is needed since CalculateH_* and Compute_LLG_RHS function take Array<MultiFab, AMREX_SPACEDIM> as input param
-
-                Array<MultiFab, AMREX_SPACEDIM> ar_rhs{AMREX_D_DECL(MultiFab(rhs[0],amrex::make_alias,0,rhs[0].nComp()),
-		                                                    MultiFab(rhs[1],amrex::make_alias,0,rhs[1].nComp()),
-			       			                    MultiFab(rhs[2],amrex::make_alias,0,rhs[2].nComp()))};
-
-                Array<MultiFab, AMREX_SPACEDIM> ar_state{AMREX_D_DECL(MultiFab(state[0],amrex::make_alias,0,state[0].nComp()),
-                                                                      MultiFab(state[1],amrex::make_alias,0,state[1].nComp()),
-                                                                      MultiFab(state[2],amrex::make_alias,0,state[2].nComp()))};
-
-		for (int comp = 0; comp < 3; comp++) {
-                    ar_state[comp].FillBoundary(geom.periodicity());
-		}
-
-#ifdef AMREX_USE_EB
-                ComputePhi_Rho_EB(pMLMG, p_mlebabec, alpha_cc, PoissonRHS, PoissonPhi, PoissonPhi_Prev, PhiErr,
-                                  ar_state, charge_den, Jn, Jp, e_den, hole_den, acceptor_den, donor_den, MaterialMask, 
-                                  angle_alpha, angle_beta, angle_theta, geom, prob_lo, prob_hi);
-#else
-                ComputePhi_Rho(pMLMG, p_mlabec, LinOpBCType_2d, alpha_cc, PoissonRHS, PoissonPhi, PoissonPhi_Prev, PhiErr,
-                               ar_state, charge_den, Jn, Jp, e_den, hole_den, acceptor_den, donor_den, MaterialMask, 
-                               angle_alpha, angle_beta, angle_theta, geom, n_cell, rFerroX, time, prob_lo, prob_hi);
-#endif
-
-                ComputeEfromPhi(PoissonPhi, E, angle_alpha, angle_beta, angle_theta, geom, prob_lo, prob_hi);
-
-                if (include_Landau == 1){
-                   if(fast_Landau == 1){ 
-                      Calculate_Landau(GL_rhs_Landau, ar_state, Gamma, tphaseMask);
-                   } else {
-                      for (int idim=0; idim<AMREX_SPACEDIM; ++idim) {
-                             GL_rhs_Landau[idim].setVal(0.);
-                      }
-                   }
-                }   
-                if (include_Grad == 1){ 
-                   if(fast_Grad == 1){
-                      Calculate_Grad(GL_rhs_grad, ar_state, Gamma, MaterialMask, tphaseMask, angle_alpha, angle_beta, angle_theta, geom);
-                   } else {
-                      for (int idim=0; idim<AMREX_SPACEDIM; ++idim) {
-                             GL_rhs_grad[idim].setVal(0.);
-                      }
-                   }
-                }   
-                if (include_Elec == 1){ 
-                   if(fast_Elec == 1){
-                      Calculate_Elec(GL_rhs_elec, E, Gamma, tphaseMask);
-                   } else {
-                      for (int idim=0; idim<AMREX_SPACEDIM; ++idim) {
-                             GL_rhs_elec[idim].setVal(0.);
-                      }
-                   }
-                }   
-
-                // Compute f^n = f(P^n, E^n) 
-        	CalculateTDGL_RHS(ar_rhs, GL_rhs_Landau, GL_rhs_grad, GL_rhs_elec, ar_state, E, Gamma, MaterialMask, tphaseMask, angle_alpha, angle_beta, angle_theta, geom);
-
-
-                };
-                /*
-	    // Create a function to call after updating a state
-            auto post_update_fun = [&](Vector<MultiFab>& state, const Real ) {
-               
-                Array<MultiFab, AMREX_SPACEDIM> ar_state{AMREX_D_DECL(MultiFab(state[0],amrex::make_alias,0,state[0].nComp()),
-		                                                      MultiFab(state[1],amrex::make_alias,0,state[1].nComp()),
-			       			                      MultiFab(state[2],amrex::make_alias,0,state[2].nComp()))};
-
-	    	// fill interior and periodic ghost cells
-		for (int comp = 0; comp < 3; comp++) {
-                    ar_state[comp].FillBoundary(geom.periodicity());
-		}
+               ComputeRHS_DriftDiffusion(PoissonPhi, e_rhs, p_rhs, Jn, Jp, e_den, p_den, MaterialMask, geom);
             };
-                */
-
-	    // Attach the right hand side and post-update functions
+ 
+            // Attach the right hand side and post-update functions
             // to the integrator
             integrator.set_rhs(rhs_fun);
-//            integrator.set_post_step_action(post_update_fun);
-
-            integrator.set_time_step(dt);
-
-            if (using_MRI) {
-                integrator.set_fast_time_step(fast_dt_ratio*dt);
-                integrator.set_fast_rhs(rhs_fast_fun);
+     
+ 	    if (adapt_dt) {
+                integrator.set_adaptive_step();
+                integrator.set_tolerances(reltol, abstol);
+            } else {
+                integrator.set_time_step(dt);
             }
 
-            // integrate forward one step from `time` by `dt` to fill S_new
-            //integrator.advance(vP_old, vP_new, time, dt);
-            integrator.evolve(vP_new, time+dt);
+            // integrate forward one step from `time` by `dt`
+            integrator.evolve(carrier_den, time+dt);
+          
+            // copy carrier_den comps into e_den, hole_den
+            MultiFab::Copy(e_den, carrier_den, 0, 0, 1, 1);
+            MultiFab::Copy(hole_den, carrier_den, 1, 0, 1, 1);
+            
+	    // Apply carrier BC and compute rho for the next time step
+            ComputeRho_sundials(charge_den, e_den, hole_den, acceptor_den, donor_den, MaterialMask, geom);
 
 #endif
-
-//#ifdef AMREX_USE_EB
-//
-//            ComputePhi_Rho_EB(pMLMG, p_mlebabec, alpha_cc, PoissonRHS, PoissonPhi, PoissonPhi_Prev, PhiErr,
-//        	P_new, charge_den, e_den, hole_den, MaterialMask, 
-//        	angle_alpha, angle_beta, angle_theta, geom, prob_lo, prob_hi);
-//#else
-//             ComputePhi_Rho(pMLMG, p_mlabec, alpha_cc, PoissonRHS, PoissonPhi, PoissonPhi_Prev, PhiErr,
-//        	P_new, charge_den, e_den, hole_den, MaterialMask, 
-//        	angle_alpha, angle_beta, angle_theta, geom, prob_lo, prob_hi);
-//#endif
-            // copy new solution into old solution
-            for (int i = 0; i < 3; i++) {
-        	MultiFab::Copy(P_old[i], P_new[i], 0, 0, 1, 1);
-        	P_old[i].FillBoundary(geom.periodicity());
-            }
 	}
 
         // Check if steady state has reached 
     //    CheckSteadyState(PoissonPhi, PoissonPhi_Old, Phidiff, phi_tolerance, step, steady_state_step, inc_step); // Calculate E from Phi
-        ComputeEfromPhi(PoissonPhi, E, angle_alpha, angle_beta, angle_theta, geom, prob_lo, prob_hi);
 
         Real step_stop_time = ParallelDescriptor::second() - step_strt_time;
         ParallelDescriptor::ReduceRealMax(step_stop_time);

@@ -166,8 +166,8 @@ void InitializePandRho(Array<MultiFab, AMREX_SPACEDIM> &P_old,
             
                 // Calculate current z position
                 Real z_pos = prob_lo[2] + (k+0.5) * dx[2];
-                Real junction_z = 1e6;  //nonsmooth initialization. set it to 0.5e-6 for the PN junction test cases. // P-N interface at 0.5 μm
-                Real transition_width = 50e-9; // 50nm smooth transition width
+                Real junction_z = 0.5e-6;  //nonsmooth initialization. set it to 0.5e-6 for the PN junction test cases. // P-N interface at 0.5 μm
+                Real transition_width = 100e-9; // 50nm smooth transition width
                 Real distance_from_junction = z_pos - junction_z;
             
                 if (mask(i,j,k) == 2.0) { // intrinsic
@@ -246,6 +246,7 @@ void InitializePandRho(Array<MultiFab, AMREX_SPACEDIM> &P_old,
             }
 	});
     */
+    //* 
     amrex::ParallelFor( bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
     {
         // A small helper lambda to get initial doping and carrier values for a given mask ID.
@@ -309,6 +310,7 @@ void InitializePandRho(Array<MultiFab, AMREX_SPACEDIM> &P_old,
             donor_den_arr(i,j,k) = 0.0;
         }
     });
+    //*/
     }
     // Fill boundaries for all MultiFabs
     e_den.FillBoundary(geom.periodicity());

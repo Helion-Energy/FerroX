@@ -205,7 +205,7 @@ void CalculateDriftDiffusionCurrents(
             if (mask(i,j,k) >= 2.0) {
         
                 // --- Calculate J_x (current across faces normal to x-axis) ---
-                if (i <= domain.bigEnd(0)) { 
+                if (i < domain.bigEnd(0)) { 
                     if (mask(i+1,j,k) >= 2.0) {
                         amrex::Real dPhi_n = phi_n_arr(i+1, j, k) - phi_n_arr(i, j, k);
                         amrex::Real arg_n = dPhi_n / kBT_over_q;
@@ -218,22 +218,22 @@ void CalculateDriftDiffusionCurrents(
                         
                         // Hole current
                         Jpx_arr(i, j, k) = -q * D_p / dx[0] * (p_den_arr(i+1,j,k) * Bern(-arg_p) - p_den_arr(i,j,k) * Bern(arg_p));
-   //                     if(k == 1 && j == 1 && (i == domain.bigEnd(0) || i == domain.bigEnd(0) - 1)){
-   //                         amrex::Real p_den_k = p_den_arr(i,j,k);
-   //                         amrex::Real p_den_kp1 = p_den_arr(i+1,j,k); // THIS IS THE CRITICAL VALUE TO CHECK
-   //                     
-   //                         amrex::Print() << "i = " << i << ", p_den_arr(k) = " << p_den_k << "\n";
-   //                         amrex::Print() << "i = " << i << ", p_den_arr(k+1) = " << p_den_kp1 << "\n";
-   //                         amrex::Print() << "i = " << i << ", phi_arr(k) = " << phi_p_arr(i,j,k) << "\n";
-   //                         amrex::Print() << "i = " << i << ", phi_arr(k+1) = " << phi_p_arr(i+1,j,k) << "\n";
-   //                         amrex::Print() << "i = " << i << ", Bern(-arg_p_z)  = " << Bern(-arg_p) << "\n";
-   //                         amrex::Print() << "i = " << i << ", Bern(arg_p_z)  = " << Bern(arg_p) << "\n";
-   //                     }
+                        //if(k == 1 && j == 1 && (i == domain.bigEnd(0) || i == domain.bigEnd(0) - 1)){
+                        //    amrex::Real p_den_k = p_den_arr(i,j,k);
+                        //    amrex::Real p_den_kp1 = p_den_arr(i+1,j,k); // THIS IS THE CRITICAL VALUE TO CHECK
+                        //
+                        //    amrex::Print() << "i = " << i << ", p_den_arr(k) = " << p_den_k << "\n";
+                        //    amrex::Print() << "i = " << i << ", p_den_arr(k+1) = " << p_den_kp1 << "\n";
+                        //    amrex::Print() << "i = " << i << ", phi_arr(k) = " << phi_p_arr(i,j,k) << "\n";
+                        //    amrex::Print() << "i = " << i << ", phi_arr(k+1) = " << phi_p_arr(i+1,j,k) << "\n";
+                        //    amrex::Print() << "i = " << i << ", Bern(-arg_p_z)  = " << Bern(-arg_p) << "\n";
+                        //    amrex::Print() << "i = " << i << ", Bern(arg_p_z)  = " << Bern(arg_p) << "\n";
+                        //}
                     }
                 }
                 
                 // --- Calculate J_y (current across faces normal to y-axis) ---
-                if (j <= domain.bigEnd(1)) {
+                if (j < domain.bigEnd(1)) {
                     if (mask(i,j+1,k) >= 2.0) {
                         amrex::Real dPhi_n_y = phi_n_arr(i, j+1, k) - phi_n_arr(i, j, k);
                         amrex::Real arg_n_y = dPhi_n_y / kBT_over_q;
@@ -265,7 +265,7 @@ void CalculateDriftDiffusionCurrents(
                         Jpz_arr(i, j, k) = -q * D_p / dx[2] * (p_den_arr(i,j,k+1) * Bern(-arg_p_z) - p_den_arr(i,j,k) * Bern(arg_p_z));
                         //if(i == 1 && j == 1 && (k == domain.bigEnd(2) || k == domain.bigEnd(2) - 1)){
                         //    amrex::Real p_den_k = p_den_arr(i,j,k);
-                        //    amrex::Real p_den_kp1 = p_den_arr(i,j,k+1); // THIS IS THE CRITICAL VALUE TO CHECK
+                        //    amrex::Real p_den_kp1 = p_den_arr(i,j,k+1);
                         //
                         //    amrex::Print() << "k = " << k << ", p_den_arr(k) = " << p_den_k << "\n";
                         //    amrex::Print() << "k = " << k << ", p_den_arr(k+1) = " << p_den_kp1 << "\n";
@@ -420,8 +420,8 @@ void ComputeRho_DriftDiffusion(MultiFab&      PoissonPhi,
                     p_den_arr(i, j, k) += dt * ((-1.0/q) * div_Jp - recomb_term);
 
                     // Ensure carrier densities remain positive
-                    e_den_arr(i, j, k) = amrex::max(e_den_arr(i, j, k), 1.0e10);
-                    p_den_arr(i, j, k) = amrex::max(p_den_arr(i, j, k), 1.0e10);
+                    //e_den_arr(i, j, k) = amrex::max(e_den_arr(i, j, k), 1.0e10);
+                    //p_den_arr(i, j, k) = amrex::max(p_den_arr(i, j, k), 1.0e10);
                 }
 
                 // --- Assume Complete Ionization For Now ---
@@ -681,3 +681,268 @@ void Compute_Effective_Potentials(const MultiFab& PoissonPhi,
     e_potential.FillBoundary(geom.periodicity());
     p_potential.FillBoundary(geom.periodicity());
 }
+
+void ComputeRHS_DriftDiffusion(MultiFab&      PoissonPhi,
+                MultiFab&      e_rhs,
+                MultiFab&      p_rhs,
+                Array<MultiFab, AMREX_SPACEDIM> &Jn,
+                Array<MultiFab, AMREX_SPACEDIM> &Jp,
+                MultiFab&      e_den,
+                MultiFab&      p_den,
+                MultiFab& MaterialMask,
+                const Geometry& geom)
+{
+//    amrex::Print() << "Calculating RHS for Drift-Diffusion model." << "\n";
+
+    // First, calculate the current components and store them in Jn and Jp
+    CalculateDriftDiffusionCurrents(Jn, Jp, e_den, p_den, MaterialMask, PoissonPhi, geom);
+
+    // Get cell spacing from geometry
+    const amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> dx = geom.CellSizeArray();
+
+    // Get domain boundaries
+    const Box& domain = geom.Domain();
+    const int domain_lo_z = domain.smallEnd(2);
+    const int domain_hi_z = domain.bigEnd(2);
+
+    // Get the intrinsic carrier concentration
+    amrex::Real ni_val = intrinsic_carrier_concentration;
+    amrex::Real ni_sq_val = ni_val * ni_val;
+
+    // SRH recombination parameters
+    amrex::Real tau_n_val = electron_lifetime; // Electron lifetime
+    amrex::Real tau_p_val = hole_lifetime; // Hole lifetime
+
+    // Loop over grids (boxes) in the MultiFab for updating densities
+    for (amrex::MFIter mfi(e_den, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi)
+    {
+        const amrex::Box& bx = mfi.tilebox();
+
+        // Get Array4 views for densities
+        amrex::Array4<amrex::Real> const& e_den_arr = e_den.array(mfi);
+        amrex::Array4<amrex::Real> const& p_den_arr = p_den.array(mfi);
+        amrex::Array4<amrex::Real> const& e_rhs_arr = e_rhs.array(mfi);
+        amrex::Array4<amrex::Real> const& p_rhs_arr = p_rhs.array(mfi);
+        amrex::Array4<amrex::Real> const& phi = PoissonPhi.array(mfi);
+        const Array4<Real>& mask = MaterialMask.array(mfi);
+
+        // Get Array4 views for current components
+        amrex::Array4<amrex::Real const> const& Jnx_arr = Jn[0].const_array(mfi);
+        amrex::Array4<amrex::Real const> const& Jny_arr = Jn[1].const_array(mfi);
+        amrex::Array4<amrex::Real const> const& Jnz_arr = Jn[2].const_array(mfi);
+        amrex::Array4<amrex::Real const> const& Jpx_arr = Jp[0].const_array(mfi);
+        amrex::Array4<amrex::Real const> const& Jpy_arr = Jp[1].const_array(mfi);
+        amrex::Array4<amrex::Real const> const& Jpz_arr = Jp[2].const_array(mfi);
+
+        amrex::ParallelFor(bx, [=] AMREX_GPU_HOST_DEVICE (int i, int j, int k) noexcept
+        {
+            if (mask(i,j,k) >= 2.0) {
+                // Check if we're at domain boundaries
+                bool at_left_contact = (k == domain_lo_z);
+                bool at_right_contact = (k == domain_hi_z);
+
+                // ONLY UPDATE INTERIOR POINTS - NOT CONTACTS
+                if (!at_left_contact && !at_right_contact) {
+                    // Interior points - update using drift-diffusion equations
+
+                    // --- Calculate Current Divergence Safely ---
+                    amrex::Real div_Jn = 0.0;
+                    amrex::Real div_Jp = 0.0;
+
+                    // X-direction divergence
+                    if (i == domain.smallEnd(0)) {
+                        div_Jn += Jnx_arr(i, j, k) / dx[0];
+                        div_Jp += Jpx_arr(i, j, k) / dx[0];
+                    } else if (i == domain.bigEnd(0)) {
+                        div_Jn += -Jnx_arr(i-1, j, k) / dx[0];
+                        div_Jp += -Jpx_arr(i-1, j, k) / dx[0];
+                    } else {
+                        div_Jn += (Jnx_arr(i, j, k) - Jnx_arr(i-1, j, k)) / dx[0];
+                        div_Jp += (Jpx_arr(i, j, k) - Jpx_arr(i-1, j, k)) / dx[0];
+                    }
+
+                    // Y-direction divergence
+                    if (j == domain.smallEnd(1)) {
+                        div_Jn += Jny_arr(i, j, k) / dx[1];
+                        div_Jp += Jpy_arr(i, j, k) / dx[1];
+                    } else if (j == domain.bigEnd(1)) {
+                        div_Jn += -Jny_arr(i, j-1, k) / dx[1];
+                        div_Jp += -Jpy_arr(i, j-1, k) / dx[1];
+                    } else {
+                        div_Jn += (Jny_arr(i, j, k) - Jny_arr(i, j-1, k)) / dx[1];
+                        div_Jp += (Jpy_arr(i, j, k) - Jpy_arr(i, j-1, k)) / dx[1];
+                    }
+
+                    // Z-direction divergence
+                    if (k == domain.smallEnd(2)) {
+                        div_Jn += Jnz_arr(i, j, k) / dx[2];
+                        div_Jp += Jpz_arr(i, j, k) / dx[2];
+                    } else if (k == domain.bigEnd(2)) {
+                        div_Jn += -Jnz_arr(i, j, k-1) / dx[2];
+                        div_Jp += -Jpz_arr(i, j, k-1) / dx[2];
+                    } else {
+                        div_Jn += (Jnz_arr(i, j, k) - Jnz_arr(i, j, k-1)) / dx[2];
+                        div_Jp += (Jpz_arr(i, j, k) - Jpz_arr(i, j, k-1)) / dx[2];
+                    }
+
+                    // --- Calculate SRH Net Recombination Rate ---
+                    amrex::Real current_n = e_den_arr(i, j, k);
+                    amrex::Real current_p = p_den_arr(i, j, k);
+
+                    // Ensure positive densities for recombination calculation
+                    current_n = amrex::max(current_n, 1.0e10);
+                    current_p = amrex::max(current_p, 1.0e10);
+                    amrex::Real SRH_numerator = (current_n * current_p) - ni_sq_val;
+                    amrex::Real SRH_denominator = tau_p_val * (current_n + ni_val) + tau_n_val * (current_p + ni_val);
+
+                    amrex::Real R_SRH = 0.0;
+                    if (SRH_denominator > 1.0e-30) {
+                        R_SRH = SRH_numerator / SRH_denominator;
+                    }
+
+                    amrex::Real recomb_term = (use_srh_recombination == 1) ? R_SRH : 0.0;
+
+                    // --- Update Carrier Densities ---
+                    // Continuity equations:
+                    // ∂n/∂t = (1/q) * ∇·Jn - R
+                    // ∂p/∂t = -(1/q) * ∇·Jp - R
+                    e_rhs_arr(i, j, k) = (1.0/q) * div_Jn - recomb_term;
+                    p_rhs_arr(i, j, k) = (-1.0/q) * div_Jp - recomb_term;
+
+                    // Ensure carrier densities remain positive
+                    //e_den_arr(i, j, k) = amrex::max(e_den_arr(i, j, k), 1.0e10);
+                    //p_den_arr(i, j, k) = amrex::max(p_den_arr(i, j, k), 1.0e10);
+                }
+
+            }
+        });
+    }
+    // Fill ghost cells for updated multifabs
+    e_rhs.FillBoundary(geom.periodicity());
+    p_rhs.FillBoundary(geom.periodicity());
+}
+
+
+// Compute rho in SC region for given phi
+void ComputeRho_sundials(MultiFab&      rho,
+                MultiFab&      e_den,
+                MultiFab&      p_den,
+                MultiFab&      acceptor_den,
+                MultiFab&      donor_den,
+                MultiFab& MaterialMask,
+                const Geometry& geom)
+{
+
+    // Get domain boundaries
+    const Box& domain = geom.Domain();
+    const int domain_lo_z = domain.smallEnd(2);
+    const int domain_hi_z = domain.bigEnd(2);
+
+    // **NOW SET ZERO-CURRENT BOUNDARY CONDITIONS FOR X AND Y GHOST CELLS**
+    for (amrex::MFIter mfi(e_den); mfi.isValid(); ++mfi)
+    {
+        amrex::Array4<amrex::Real> e_den_arr = e_den.array(mfi);
+        amrex::Array4<amrex::Real> p_den_arr = p_den.array(mfi);
+        const amrex::Box& grown_bx = mfi.growntilebox(1); // The box including ghost cells
+    
+        // Get domain bounds for x and y
+        const int domain_lo_x = geom.Domain().loVect()[0];
+        const int domain_hi_x = geom.Domain().hiVect()[0];
+        const int domain_lo_y = geom.Domain().loVect()[1];
+        const int domain_hi_y = geom.Domain().hiVect()[1];
+    
+        amrex::ParallelFor(grown_bx, [=] AMREX_GPU_HOST_DEVICE (int i, int j, int k)
+        {
+            // Handle x-direction ghost cells
+            if (i < domain_lo_x && i >= (domain_lo_x - 1)) { // Left ghost cell
+                e_den_arr(i, j, k) = e_den_arr(domain_lo_x, j, k);
+                p_den_arr(i, j, k) = p_den_arr(domain_lo_x, j, k);
+            } else if (i > domain_hi_x && i <= (domain_hi_x + 1)) { // Right ghost cell
+                e_den_arr(i, j, k) = e_den_arr(domain_hi_x, j, k);
+                p_den_arr(i, j, k) = p_den_arr(domain_hi_x, j, k);
+            }
+    
+            // Handle y-direction ghost cells
+            if (j < domain_lo_y && j >= (domain_lo_y - 1)) { // Bottom ghost cell
+                e_den_arr(i, j, k) = e_den_arr(i, domain_lo_y, k);
+                p_den_arr(i, j, k) = p_den_arr(i, domain_lo_y, k);
+            } else if (j > domain_hi_y && j <= (domain_hi_y + 1)) { // Top ghost cell
+                e_den_arr(i, j, k) = e_den_arr(i, domain_hi_y, k);
+                p_den_arr(i, j, k) = p_den_arr(i, domain_hi_y, k);
+            }
+    
+        });
+    }
+
+
+    // Loop over grids (boxes) in the MultiFab for updating densities
+    for (amrex::MFIter mfi(e_den, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi)
+    {
+        const amrex::Box& bx = mfi.growntilebox(1);
+
+        // Get Array4 views for densities
+        amrex::Array4<amrex::Real> const& e_den_arr = e_den.array(mfi);
+        amrex::Array4<amrex::Real> const& p_den_arr = p_den.array(mfi);
+        amrex::Array4<amrex::Real> const& charge_den_arr = rho.array(mfi);
+        const Array4<Real>& acceptor_den_arr = acceptor_den.array(mfi);
+        const Array4<Real>& donor_den_arr = donor_den.array(mfi);
+        const Array4<Real>& mask = MaterialMask.array(mfi);
+
+        amrex::ParallelFor(bx, [=] AMREX_GPU_HOST_DEVICE (int i, int j, int k) noexcept
+        {
+             // --- Update Total Charge Density ---
+             charge_den_arr(i,j,k) = q*(p_den_arr(i,j,k) - e_den_arr(i,j,k) - acceptor_den_arr(i,j,k) + donor_den_arr(i,j,k));
+        });
+    }
+
+    // **NOW SET CONTACT BOUNDARY CONDITIONS AFTER THE MAIN LOOP**
+    for (amrex::MFIter mfi(e_den); mfi.isValid(); ++mfi)
+    {
+        const amrex::Box& bx = mfi.growntilebox(1);
+        amrex::Array4<amrex::Real> e_den_arr = e_den.array(mfi);
+        amrex::Array4<amrex::Real> p_den_arr = p_den.array(mfi);
+        amrex::Array4<amrex::Real> charge_den_arr = rho.array(mfi);
+        const Array4<Real>& acceptor_den_arr = acceptor_den.array(mfi);
+        const Array4<Real>& donor_den_arr = donor_den.array(mfi);
+        const Array4<Real>& mask = MaterialMask.array(mfi);
+    
+        // Get the intrinsic carrier concentration
+        amrex::Real ni_val = intrinsic_carrier_concentration;
+        amrex::Real ni_sq_val = ni_val * ni_val;
+
+        amrex::ParallelFor(bx, [=] AMREX_GPU_HOST_DEVICE (int i, int j, int k)
+        {
+            // Check if we are at a contact boundary in z
+            if (k <= domain_lo_z || k >= domain_hi_z) {
+                // Check if the material is a semiconductor
+                if (mask(i,j,k) >= 2.0) {
+                    // Now check the material type to determine the BC and use local doping
+                    if (mask(i,j,k) == 4.0 || mask(i,j,k) == 6.0) { // n-type or n++
+                        // Apply N-type BC using local donor doping
+                        amrex::Real local_doping = donor_den_arr(i, j, k);
+                        e_den_arr(i, j, k) = 0.5*local_doping + std::sqrt(std::pow(0.5*local_doping, 2.0) + ni_sq_val);
+                        p_den_arr(i, j, k) = ni_sq_val / e_den_arr(i, j, k);
+    
+                        // Update charge density for contact
+                        charge_den_arr(i,j,k) = q*(p_den_arr(i,j,k) - e_den_arr(i,j,k) + local_doping);
+                    } else if (mask(i,j,k) == 3.0 || mask(i,j,k) == 5.0) { // p-type or p++
+                        // Apply P-type BC using local acceptor doping
+                        amrex::Real local_doping = acceptor_den_arr(i, j, k);
+                        p_den_arr(i, j, k) = 0.5*local_doping + std::sqrt(std::pow(0.5*local_doping, 2.0) + ni_sq_val);
+                        e_den_arr(i, j, k) = ni_sq_val / p_den_arr(i, j, k);
+   
+		       // if(i == 0 && j == 0)amrex::Print() << "Apply P-type BC using local acceptor doping at k = " << k << ", mask = "<< mask(i,j,k) << ", p_den_arr(i, j, k) = " << p_den_arr(i, j, k) << ", e_den_arr(i, j, k) = " << e_den_arr(i, j, k) << "\n";	
+                        // Update charge density for contact
+                        charge_den_arr(i,j,k) = q*(p_den_arr(i,j,k) - e_den_arr(i,j,k) - local_doping);
+                    }
+                }
+            }
+        });
+    }
+
+    // Fill ghost cells for updated multifabs
+    e_den.FillBoundary(geom.periodicity());
+    p_den.FillBoundary(geom.periodicity());
+    rho.FillBoundary(geom.periodicity());
+}
+

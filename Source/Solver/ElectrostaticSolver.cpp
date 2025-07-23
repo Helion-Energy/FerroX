@@ -709,30 +709,38 @@ void ApplyOhmicContacts(MultiFab& PoissonPhi, MultiFab& MaterialMask,
         {
             // Boundary condition for the lower z-face (k < 0 in ghost cells)
             if (k < 0) {
+
+	        // Read the parsed boundary value that's already in the ghost cell
+                amrex::Real parsed_phi_bc_lo = Phi(i,j,k);
+
                 if (mask(i,j,k) == 3.0 || mask(i,j,k) == 5.0) { // lo_z touches p-type
                     // Read local acceptor doping and use the applied voltage for the low face
                     amrex::Real local_doping = acceptor_den_arr(i, j, k);
-                    Phi(i,j,k) = calculate_local_bc(local_doping, Phi_Bc_lo, false);
+                    Phi(i,j,k) = calculate_local_bc(local_doping, parsed_phi_bc_lo, false);
 
                 } else if (mask(i,j,k) == 4.0 || mask(i,j,k) == 6.0) { // lo_z touches n-type
                     // Read local donor doping and use the applied voltage for the low face
                     amrex::Real local_doping = donor_den_arr(i, j, k);
-                    Phi(i,j,k) = calculate_local_bc(local_doping, Phi_Bc_lo, true);
+                    Phi(i,j,k) = calculate_local_bc(local_doping, parsed_phi_bc_lo, true);
 
                 } else { // lo_z touches insulator or intrinsic SC or metal
                     // Use the work function BC for these regions
                     amrex::Real phi_m_V = use_work_function ? metal_work_function : phi_ref_V;
-                    Phi(i,j,k) = Phi_Bc_lo - (phi_m_V - phi_ref_V);
+                    Phi(i,j,k) = parsed_phi_bc_lo - (phi_m_V - phi_ref_V);
                 }
             }
 
             // Boundary condition for the upper z-face (k >= n_cell[2] in ghost cells)
             if (k >= n_cell[2]) {
+
+	        // Read the parsed boundary value that's already in the ghost cell
+                amrex::Real parsed_phi_bc_hi = Phi(i,j,k);
+
                 if (mask(i,j,k) == 3.0 || mask(i,j,k) == 5.0) { // hi_z touches p-type
                     // Read local acceptor doping and use the applied voltage for the high face
                     amrex::Real local_doping = acceptor_den_arr(i, j, k);
-                    Phi(i,j,k) = calculate_local_bc(local_doping, Phi_Bc_hi, false); //gate region
-		    //if(i == 0 && j == 0) amrex::Print() << "p-type BC at k = " << k <<", mask = " << mask(0,0,k) << "Phi_BC = " << calculate_local_bc(local_doping, Phi_Bc_hi, false) << "\n";
+                    Phi(i,j,k) = calculate_local_bc(local_doping, parsed_phi_bc_hi, false); //gate region
+		    //if(i == 0 && j == 0) amrex::Print() << "p-type BC at k = " << k <<", mask = " << mask(0,0,k) << "Phi_BC = " << calculate_local_bc(local_doping, parsed_phi_bc_hi, false) << ", parsed_phi_bc_hi = "<< parsed_phi_bc_hi << "\n";
 
                 } else if (mask(i,j,k) == 4.0 || mask(i,j,k) == 6.0) { // hi_z touches n-type
                     // Read local donor doping and use the applied voltage for the high face
@@ -743,7 +751,7 @@ void ApplyOhmicContacts(MultiFab& PoissonPhi, MultiFab& MaterialMask,
                 } else { // hi_z touches insulator or intrinsic SC or metal
                     // Use the work function BC for these regions
                     amrex::Real phi_m_V = use_work_function ? metal_work_function : phi_ref_V;
-                    Phi(i,j,k) = Phi_Bc_hi - (phi_m_V - phi_ref_V);
+                    Phi(i,j,k) = parsed_phi_bc_hi - (phi_m_V - phi_ref_V);
                 }
             }
         });
@@ -1057,6 +1065,71 @@ void ComputePhi_Rho(std::unique_ptr<amrex::MLMG>& pMLMG,
 	
         // Calculate rho from Phi in SC region
         ComputeRho_DriftDiffusion(PoissonPhi, rho, Jn, Jp, e_den, p_den, acceptor_den, donor_den, MaterialMask, geom);
+}
+
+void ComputePhi(std::unique_ptr<amrex::MLMG>& pMLMG, 
+             std::unique_ptr<amrex::MLABecLaplacian>& p_mlabec,
+             std::array<std::array<amrex::LinOpBCType,AMREX_SPACEDIM>,2>& LinOpBCType_2d,
+             MultiFab&            alpha_cc,
+             MultiFab&            PoissonRHS, 
+             MultiFab&            PoissonPhi, 
+             MultiFab&            PoissonPhi_Prev,
+             MultiFab&            PhiErr,  
+	     Array<MultiFab, AMREX_SPACEDIM>& P_old,
+             MultiFab&            rho,
+	     Array<MultiFab, AMREX_SPACEDIM>& Jn,
+	     Array<MultiFab, AMREX_SPACEDIM>& Jp,
+             MultiFab&            e_den,
+             MultiFab&            p_den,
+             MultiFab&            acceptor_den,
+             MultiFab&            donor_den,
+	     MultiFab&            MaterialMask,
+             MultiFab& angle_alpha, MultiFab& angle_beta, MultiFab& angle_theta,
+             const          Geometry& geom,
+             const amrex::GpuArray<int, AMREX_SPACEDIM>& n_cell,
+	     c_FerroX& rFerroX,
+	     amrex::Real& time,
+	     const amrex::GpuArray<amrex::Real, AMREX_SPACEDIM>& prob_lo,
+             const amrex::GpuArray<amrex::Real, AMREX_SPACEDIM>& prob_hi)
+
+{
+	//Compute RHS of Poisson equation
+	ComputePoissonRHS(PoissonRHS, P_old, rho, MaterialMask, angle_alpha, angle_beta, angle_theta, geom);
+
+        p_mlabec->setACoeffs(0, alpha_cc);
+
+        bool all_homogeneous_boundaries = true;
+        bool some_functionbased_inhomogeneous_boundaries = false;
+        bool some_constant_inhomogeneous_boundaries = false;
+        int amrlev = 0; //refers to the setcoarsest level of the solve
+    
+        // assign domain boundary conditions to the solver
+        p_mlabec->setDomainBC(LinOpBCType_2d[0], LinOpBCType_2d[1]);
+
+        SetPoissonBC(rFerroX, LinOpBCType_2d, all_homogeneous_boundaries, some_functionbased_inhomogeneous_boundaries, some_constant_inhomogeneous_boundaries);
+
+    	if(some_constant_inhomogeneous_boundaries)
+        {
+            Fill_Constant_Inhomogeneous_Boundaries(rFerroX, PoissonPhi);
+        }
+        if(some_functionbased_inhomogeneous_boundaries)
+        {
+            Fill_FunctionBased_Inhomogeneous_Boundaries(rFerroX, PoissonPhi, time);
+        }
+        PoissonPhi.FillBoundary(geom.periodicity());
+
+        // Apply Ohmic contact / metal workfunction corrections 
+        ApplyOhmicContacts(PoissonPhi, MaterialMask, acceptor_den, donor_den, n_cell, geom);
+
+        p_mlabec->setLevelBC(amrlev, &PoissonPhi);
+    
+        //Initial guess for phi
+        PoissonPhi.setVal(0.);
+
+        //Poisson Solve
+        pMLMG->solve({&PoissonPhi}, {&PoissonRHS}, 1.e-10, -1);
+	
+	PoissonPhi.FillBoundary(geom.periodicity());
 }
 
 #ifdef AMREX_USE_EB

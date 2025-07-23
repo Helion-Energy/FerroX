@@ -45,3 +45,22 @@ void ComputeRho_DriftDiffusion(MultiFab&      PoissonPhi,
                 MultiFab&      donor_den,
                 MultiFab& MaterialMask,
                 const Geometry& geom);
+
+void ComputeRHS_DriftDiffusion(MultiFab&      PoissonPhi,
+                MultiFab&      e_rhs,
+                MultiFab&      p_rhs,
+                Array<MultiFab, AMREX_SPACEDIM> &Jn,
+                Array<MultiFab, AMREX_SPACEDIM> &Jp,
+                MultiFab&      e_den,
+                MultiFab&      p_den,
+                MultiFab& MaterialMask,
+                const Geometry& geom);
+
+void ComputeRho_sundials(MultiFab&      rho,
+                MultiFab&      e_den,
+                MultiFab&      p_den,
+                MultiFab&      acceptor_den,
+                MultiFab&      donor_den,
+                MultiFab& MaterialMask,
+                const Geometry& geom);
+
