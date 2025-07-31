@@ -634,9 +634,14 @@ void Compute_Effective_Potentials(const MultiFab& PoissonPhi,
               Real Ec_J = -q * (phi_val - phi_ref) - q * Chi;
               Real Ev_J = Ec_J - q * Eg;
 
-              Real eta_n = (Efn - Ec_J)/kT; //Inverse_FD_half(u_n);  // (Efn - Ec)/kT
-              Real eta_p = (Ev_J - Efp)/kT; //Inverse_FD_half(u_p);  // (Ev - Efp)/kT
+              //Real eta_n = (Efn - Ec_J)/kT; //Inverse_FD_half(u_n);  // (Efn - Ec)/kT
+              //Real eta_p = (Ev_J - Efp)/kT; //Inverse_FD_half(u_p);  // (Ev - Efp)/kT
 
+	      Real n_val = n_arr(i,j,k);
+	      Real p_val = p_arr(i,j,k);
+
+	      Real eta_n = Inverse_FD_half(n_val / Nc_val);
+              Real eta_p = Inverse_FD_half(p_val / Nv_val);
 
               // Calculate degeneracy factors
               // γ = F_{1/2}(η) / exp(η)

@@ -142,7 +142,7 @@ c_GeometryProperties::ParseBasicDomainInput()
     }
 
     amrex::Print() << "\n================= GEOMETRY PROPERTIES =================\n";
-    
+
     amrex::Print() << "  n_cell               : ";
     for (int i = 0; i < AMREX_SPACEDIM; ++i) amrex::Print() << n_cell[i] << " ";
     amrex::Print() << "\n";
@@ -154,6 +154,12 @@ c_GeometryProperties::ParseBasicDomainInput()
     amrex::Print() << "  prob_hi              : ";
     for (int i = 0; i < AMREX_SPACEDIM; ++i) amrex::Print() << prob_hi[i] << " ";
     amrex::Print() << "\n";
+    
+    // ✅ Add dx, dy, dz calculation & print
+    amrex::Real dx = (prob_hi[0] - prob_lo[0]) / n_cell[0];
+    amrex::Real dy = (prob_hi[1] - prob_lo[1]) / n_cell[1];
+    amrex::Real dz = (prob_hi[2] - prob_lo[2]) / n_cell[2];
+    amrex::Print() << "  dx, dy, dz           : " << dx << "  " << dy << "  " << dz << "\n";
     
     amrex::Print() << "  max_grid_size        : ";
     for (int i = 0; i < AMREX_SPACEDIM; ++i) amrex::Print() << max_grid_size[i] << " ";
