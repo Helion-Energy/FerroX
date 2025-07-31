@@ -1,5 +1,6 @@
 #include "ChargeDensity.H"
 #include "DerivativeAlgorithm.H"
+#include "Impact_Ionization.H"
 
 // Approximation to the Fermi-Dirac Integral of Order 1/2
 AMREX_GPU_HOST_DEVICE AMREX_INLINE
@@ -402,26 +403,53 @@ void ComputeRho_DriftDiffusion(MultiFab&      PoissonPhi,
                     current_n = amrex::max(current_n, 1.0e10);
                     current_p = amrex::max(current_p, 1.0e10);
 
-                    amrex::Real SRH_numerator = (current_n * current_p) - ni_sq_val;
-                    amrex::Real SRH_denominator = tau_p_val * (current_n + ni_val) + tau_n_val * (current_p + ni_val);
+		    amrex::Real recomb_term = 0.0;
+		    amrex::Real generation_term = 0.0;
 
-                    amrex::Real R_SRH = 0.0;
-                    if (SRH_denominator > 1.0e-30) {
-                        R_SRH = SRH_numerator / SRH_denominator;
-                    }
+		    if (use_srh_recombination == 1) {
+                       amrex::Real SRH_numerator = (current_n * current_p) - ni_sq_val;
+                       amrex::Real SRH_denominator = tau_p_val * (current_n + ni_val) + tau_n_val * (current_p + ni_val);
 
-		    amrex::Real recomb_term = (use_srh_recombination == 1) ? R_SRH : 0.0;
+                       if (SRH_denominator > 1.0e-30) {
+                           recomb_term = SRH_numerator / SRH_denominator;
+                       }
+		    }
+
+		    if (use_impact_ionization == 1) {
+		       // --- Calculate Impact Ionization Generation Rate ---
+                       // Calculate electric field magnitude from potential (phi).
+                       amrex::Real Ex = - (phi(i+1,j,k) - phi(i-1,j,k)) / (2.0 * dx[0]);
+                       amrex::Real Ey = - (phi(i,j+1,k) - phi(i,j-1,k)) / (2.0 * dx[1]);
+                       amrex::Real Ez = - (phi(i,j,k+1) - phi(i,j,k-1)) / (2.0 * dx[2]);
+                       amrex::Real E_field_mag = sqrt(Ex*Ex + Ey*Ey + Ez*Ez);
+
+                       amrex::Real temperature = 300.0; // Assuming room temperature
+
+                       // Calculate ionization coefficients based on the electric field and temperature.
+                       amrex::Real alpha_n_val = 0.0;
+                       amrex::Real alpha_p_val = 0.0;
+                       calculate_ionization_coefficients(E_field_mag, temperature, alpha_n_val, alpha_p_val);
+
+                       // Calculate current densities magnitudes
+                       amrex::Real Jn_mag = sqrt(Jnx_arr(i, j, k)*Jnx_arr(i, j, k) + Jny_arr(i, j, k)*Jny_arr(i, j, k) + Jnz_arr(i, j, k)*Jnz_arr(i, j, k));
+                       amrex::Real Jp_mag = sqrt(Jpx_arr(i, j, k)*Jpx_arr(i, j, k) + Jpy_arr(i, j, k)*Jpy_arr(i, j, k) + Jpz_arr(i, j, k)*Jpz_arr(i, j, k));
+
+                       // Calculate the generation rate (G).
+                       generation_term = calculate_impact_ionization_generation_rate(
+                           alpha_n_val,
+                           Jn_mag,
+                           alpha_p_val,
+                           Jp_mag,
+                           q
+                       );
+		    }
 
                     // --- Update Carrier Densities ---
                     // Continuity equations:
-                    // ∂n/∂t = (1/q) * ∇·Jn - R
-                    // ∂p/∂t = -(1/q) * ∇·Jp - R
-                    e_den_arr(i, j, k) += dt * ((1.0/q) * div_Jn - recomb_term);
-                    p_den_arr(i, j, k) += dt * ((-1.0/q) * div_Jp - recomb_term);
-
-                    // Ensure carrier densities remain positive
-                    //e_den_arr(i, j, k) = amrex::max(e_den_arr(i, j, k), 1.0e10);
-                    //p_den_arr(i, j, k) = amrex::max(p_den_arr(i, j, k), 1.0e10);
+                    // ∂n/∂t = (1/q) * ∇·Jn + G - R
+                    // ∂p/∂t = -(1/q) * ∇·Jp + G - R
+                    e_den_arr(i, j, k) += dt * (1.0/q) * div_Jn + (generation_term - recomb_term);
+                    p_den_arr(i, j, k) += dt * (-1.0/q) * div_Jp + (generation_term - recomb_term);
                 }
 
                 // --- Assume Complete Ionization For Now ---
@@ -807,16 +835,40 @@ void ComputeRHS_DriftDiffusion(MultiFab&      PoissonPhi,
 
                     amrex::Real recomb_term = (use_srh_recombination == 1) ? R_SRH : 0.0;
 
+		    // --- Calculate Impact Ionization Generation Rate ---
+                    // Calculate electric field magnitude from potential (phi).
+                    amrex::Real Ex = - (phi(i+1,j,k) - phi(i-1,j,k)) / (2.0 * dx[0]);
+                    amrex::Real Ey = - (phi(i,j+1,k) - phi(i,j-1,k)) / (2.0 * dx[1]);
+                    amrex::Real Ez = - (phi(i,j,k+1) - phi(i,j,k-1)) / (2.0 * dx[2]);
+                    amrex::Real E_field_mag = sqrt(Ex*Ex + Ey*Ey + Ez*Ez);
+
+                    amrex::Real temperature = 300.0; // Assuming room temperature
+
+                    // Calculate ionization coefficients based on the electric field and temperature.
+                    amrex::Real alpha_n_val = 0.0;
+                    amrex::Real alpha_p_val = 0.0;
+                    calculate_ionization_coefficients(E_field_mag, temperature, alpha_n_val, alpha_p_val);
+
+                    // Calculate current densities magnitudes
+                    amrex::Real Jn_mag = sqrt(Jnx_arr(i, j, k)*Jnx_arr(i, j, k) + Jny_arr(i, j, k)*Jny_arr(i, j, k) + Jnz_arr(i, j, k)*Jnz_arr(i, j, k));
+                    amrex::Real Jp_mag = sqrt(Jpx_arr(i, j, k)*Jpx_arr(i, j, k) + Jpy_arr(i, j, k)*Jpy_arr(i, j, k) + Jpz_arr(i, j, k)*Jpz_arr(i, j, k));
+
+                    // Calculate the generation rate (G).
+                    amrex::Real generation_term = calculate_impact_ionization_generation_rate(
+                        alpha_n_val,
+                        Jn_mag,
+                        alpha_p_val,
+                        Jp_mag,
+                        q
+                    );
+
                     // --- Update Carrier Densities ---
                     // Continuity equations:
-                    // ∂n/∂t = (1/q) * ∇·Jn - R
-                    // ∂p/∂t = -(1/q) * ∇·Jp - R
-                    e_rhs_arr(i, j, k) = (1.0/q) * div_Jn - recomb_term;
-                    p_rhs_arr(i, j, k) = (-1.0/q) * div_Jp - recomb_term;
+                    // ∂n/∂t = (1/q) * ∇·Jn + G - R
+                    // ∂p/∂t = -(1/q) * ∇·Jp + G - R
+                    e_rhs_arr(i, j, k) = (1.0/q) * div_Jn + (generation_term - recomb_term);
+                    p_rhs_arr(i, j, k) = (-1.0/q) * div_Jp + (generation_term - recomb_term);
 
-                    // Ensure carrier densities remain positive
-                    //e_den_arr(i, j, k) = amrex::max(e_den_arr(i, j, k), 1.0e10);
-                    //p_den_arr(i, j, k) = amrex::max(p_den_arr(i, j, k), 1.0e10);
                 }
 
             }

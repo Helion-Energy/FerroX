@@ -241,6 +241,7 @@ AMREX_GPU_MANAGED amrex::Real FerroX::hole_mobility;
 AMREX_GPU_MANAGED amrex::Real FerroX::electron_diffusion_coefficient; 
 AMREX_GPU_MANAGED amrex::Real FerroX::hole_diffusion_coefficient;    
 AMREX_GPU_MANAGED int FerroX::use_srh_recombination;
+AMREX_GPU_MANAGED int FerroX::use_impact_ionization;
 AMREX_GPU_MANAGED amrex::Real FerroX::electron_lifetime; //SRH Recombination Model
 AMREX_GPU_MANAGED amrex::Real FerroX::hole_lifetime; //SRH Recombination Model
 AMREX_GPU_MANAGED int FerroX::use_bandgap_narrowing;
@@ -644,6 +645,9 @@ void InitializeFerroXNamespace(const amrex::GpuArray<amrex::Real, AMREX_SPACEDIM
      hole_lifetime = 1.e-4;
      pp.query("hole_lifetime",hole_lifetime);
     
+     //Impact Ionization
+     use_impact_ionization = 0;
+     pp.query("use_impact_ionization",use_impact_ionization);
 
      use_Fermi_Dirac = 1;
      pp.query("use_Fermi_Dirac",use_Fermi_Dirac);
