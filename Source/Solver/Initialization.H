@@ -14,6 +14,8 @@ void InitializePandRho(Array<MultiFab, AMREX_SPACEDIM> &P_old,
                    MultiFab&   p_den,
                    MultiFab&   acceptor_den,
                    MultiFab&   donor_den,
+                   MultiFab&   AcceptorDoping,
+                   MultiFab&   DonorDoping,
 		   const MultiFab& MaterialMask,
 		   const MultiFab& tphaseMask,
                    const amrex::GpuArray<int, AMREX_SPACEDIM>& n_cell,
@@ -26,6 +28,8 @@ void InitializeMaterialMask(MultiFab& MaterialMask,
                             const amrex::GpuArray<amrex::Real, AMREX_SPACEDIM>& prob_lo,
                             const amrex::GpuArray<amrex::Real, AMREX_SPACEDIM>& prob_hi);
 
+void InitializeDopingProfiles(c_FerroX& rFerroX, const Geometry& geom, MultiFab& AcceptorDoping, MultiFab& DonorDoping);
+	
 void InitializeMaterialMask(c_FerroX& rFerroX, const Geometry& geom, MultiFab& MaterialMask);
 void Initialize_tphase_Mask(c_FerroX& rFerroX, const Geometry& geom, MultiFab& tphaseMask);
 void Initialize_Euler_angles(c_FerroX& rFerroX, const Geometry& geom, MultiFab& angle_alpha, MultiFab& angle_beta, MultiFab& angle_theta);

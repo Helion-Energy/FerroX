@@ -159,6 +159,8 @@ void main_main (c_FerroX& rFerroX)
     MultiFab e_den(ba, dm, 1, 1);
     MultiFab acceptor_den(ba, dm, 1, 1);
     MultiFab donor_den(ba, dm, 1, 1);
+    MultiFab AcceptorDoping(ba, dm, 1, 1); //for initial function based doping profile
+    MultiFab DonorDoping(ba, dm, 1, 1); //for initial function based doping profile
     MultiFab charge_den(ba, dm, 1, 1);
     MultiFab e_rhs(ba, dm, 1, 1);
     MultiFab p_rhs(ba, dm, 1, 1);
@@ -187,6 +189,8 @@ void main_main (c_FerroX& rFerroX)
     hole_den.setVal(0.);
     acceptor_den.setVal(0.);
     donor_den.setVal(0.);
+    AcceptorDoping.setVal(0.);
+    DonorDoping.setVal(0.);
     e_rhs.setVal(0.);
     p_rhs.setVal(0.);
     PoissonPhi.setVal(0.);
@@ -199,6 +203,9 @@ void main_main (c_FerroX& rFerroX)
     //Initialize material mask
     //InitializeMaterialMask(MaterialMask, geom, prob_lo, prob_hi);
     InitializeMaterialMask(rFerroX, geom, MaterialMask);
+
+    InitializeDopingProfiles(rFerroX, geom, AcceptorDoping, DonorDoping);
+    
     if(Coordinate_Transformation == 1){
        Initialize_tphase_Mask(rFerroX, geom, tphaseMask);
        Initialize_Euler_angles(rFerroX, geom, angle_alpha, angle_beta, angle_theta);
@@ -232,7 +239,7 @@ void main_main (c_FerroX& rFerroX)
     // INITIALIZE P in FE and rho in SC regions
 
     //InitializePandRho(P_old, Gamma, charge_den, e_den, hole_den, geom, prob_lo, prob_hi);//old
-    InitializePandRho(P_old, Gamma, charge_den, e_den, hole_den, acceptor_den, donor_den, MaterialMask, tphaseMask, n_cell, geom, prob_lo, prob_hi);//mask based
+    InitializePandRho(P_old, Gamma, charge_den, e_den, hole_den, acceptor_den, donor_den, AcceptorDoping, DonorDoping, MaterialMask, tphaseMask, n_cell, geom, prob_lo, prob_hi);//mask based
 
     //for sundials 
     MultiFab::Copy(carrier_den, e_den, 0, 0, 1, 1);

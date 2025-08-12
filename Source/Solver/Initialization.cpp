@@ -9,6 +9,8 @@ void InitializePandRho(Array<MultiFab, AMREX_SPACEDIM> &P_old,
                    MultiFab&   p_den,
                    MultiFab&   acceptor_den,
                    MultiFab&   donor_den,
+                   MultiFab&   AcceptorDoping,
+                   MultiFab&   DonorDoping,
 		   const MultiFab& MaterialMask,
 		   const MultiFab& tphaseMask,
                    const amrex::GpuArray<int, AMREX_SPACEDIM>& n_cell,
@@ -151,6 +153,8 @@ void InitializePandRho(Array<MultiFab, AMREX_SPACEDIM> &P_old,
         //const Array4<Real>& charge_den_arr = rho.array(mfi);
         const Array4<Real>& acceptor_den_arr = acceptor_den.array(mfi);
         const Array4<Real>& donor_den_arr = donor_den.array(mfi);
+        const Array4<Real>& acceptor_dop_arr = AcceptorDoping.array(mfi);
+        const Array4<Real>& donor_dop_arr = DonorDoping.array(mfi);
         const Array4<Real const>& mask = MaterialMask.array(mfi);
 
         // extract dx from the geometry object
@@ -260,14 +264,16 @@ void InitializePandRho(Array<MultiFab, AMREX_SPACEDIM> &P_old,
                 n = intrinsic_carrier_concentration;
                 p = intrinsic_carrier_concentration;
             } else if (mask_id == 3.0) { // p-type
-                Na = acceptor_doping;
+                //Na = acceptor_doping;
+                Na = acceptor_dop_arr(i,j,k);
                 Nd = 0.0;
-                p = acceptor_doping;
+                p = Na;
                 n = intrinsic_carrier_concentration * intrinsic_carrier_concentration / p;
             } else if (mask_id == 4.0) { // n-type
                 Na = 0.0;
-                Nd = donor_doping;
-                n = donor_doping;
+                //Nd = donor_doping;
+                Nd = donor_dop_arr(i,j,k);
+                n = Nd;
                 p = intrinsic_carrier_concentration * intrinsic_carrier_concentration / n;
             } else if (mask_id == 5.0) { // heavily doped p-type (p++)
                 Na = 5.0 * acceptor_doping;
@@ -334,6 +340,54 @@ void InitializePandRho(Array<MultiFab, AMREX_SPACEDIM> &P_old,
     }
     rho.FillBoundary(geom.periodicity());
  }
+
+// initialization of doping profiles with parser
+void InitializeDopingProfiles(c_FerroX& rFerroX, const Geometry& geom,
+                              MultiFab& AcceptorDoping, MultiFab& DonorDoping)
+{
+    auto& rGprop = rFerroX.get_GeometryProperties();
+    const auto dx = rGprop.geom.CellSizeArray();
+    const auto& real_box = rGprop.geom.ProbDomain();
+    const auto iv_acc = AcceptorDoping.ixType().toIntVect();
+    const auto iv_don = DonorDoping.ixType().toIntVect();
+
+    // Parse input functions
+    ParmParse pp_dop("doping_profile");
+
+    std::string m_str_acc_function, m_str_don_function;
+    std::unique_ptr<amrex::Parser> m_acc_parser, m_don_parser;
+
+    if (pp_dop.query("acceptor_doping_function(x,y,z)", m_str_acc_function)) {
+        Store_parserString(pp_dop, "acceptor_doping_function(x,y,z)", m_str_acc_function);
+        m_acc_parser = std::make_unique<amrex::Parser>(makeParser(m_str_acc_function, {"x","y","z"}));
+    }
+
+    if (pp_dop.query("donor_doping_function(x,y,z)", m_str_don_function)) {
+        Store_parserString(pp_dop, "donor_doping_function(x,y,z)", m_str_don_function);
+        m_don_parser = std::make_unique<amrex::Parser>(makeParser(m_str_don_function, {"x","y","z"}));
+    }
+
+    const auto& acc_parser = m_acc_parser->compile<3>();
+    const auto& don_parser = m_don_parser->compile<3>();
+    
+    for (MFIter mfi(AcceptorDoping, TilingIfNotGPU()); mfi.isValid(); ++mfi)
+    {
+        const auto& acc_arr = AcceptorDoping.array(mfi);
+        const auto& don_arr = DonorDoping.array(mfi);
+        const auto& bx = mfi.growntilebox(1);  // Ghost cells included
+
+        amrex::ParallelFor(bx,
+        [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+        {
+            eXstatic_MFab_Util::ConvertParserIntoMultiFab_3vars(i,j,k,dx,real_box,iv_acc,acc_parser,acc_arr);
+            eXstatic_MFab_Util::ConvertParserIntoMultiFab_3vars(i,j,k,dx,real_box,iv_don,don_parser,don_arr);
+        });
+    }
+
+    AcceptorDoping.FillBoundary(geom.periodicity());
+    DonorDoping.FillBoundary(geom.periodicity());
+}
+
 
 void InitializeMaterialMask(MultiFab& MaterialMask,
                             const Geometry& geom,
