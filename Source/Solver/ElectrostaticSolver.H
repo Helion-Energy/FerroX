@@ -6,6 +6,7 @@
 #include "Input/GeometryProperties/GeometryProperties.H"
 #include <AMReX_MLABecLaplacian.H>
 #include <AMReX_MLMG.H> 
+#include "LCCircuit.H"
 
 #ifdef AMREX_USE_EB
 #include <AMReX_MLEBABecLap.H>
@@ -77,7 +78,8 @@ void ApplyOhmicContacts(MultiFab& PoissonPhi, MultiFab& MaterialMask,
 void SetPoissonBC(c_FerroX& rFerroX, std::array<std::array<amrex::LinOpBCType,AMREX_SPACEDIM>,2>& LinOpBCType_2d, bool& all_homogeneous_boundaries, bool& some_functionbased_inhomogeneous_boundaries, bool& some_constant_inhomogeneous_boundaries);
 
 void Fill_Constant_Inhomogeneous_Boundaries(c_FerroX& rFerroX, MultiFab& PoissonPhi);
-void Fill_FunctionBased_Inhomogeneous_Boundaries(c_FerroX& rFerroX, MultiFab& PoissonPhi, amrex::Real& time);
+//void Fill_FunctionBased_Inhomogeneous_Boundaries(c_FerroX& rFerroX, MultiFab& PoissonPhi, amrex::Real& time);
+void Fill_FunctionBased_Inhomogeneous_Boundaries(c_FerroX& rFerroX, const LCCircuit& lc_circuit_in, MultiFab& PoissonPhi, amrex::Real& time);
 
 void CheckSteadyState(MultiFab& PoissonPhi, MultiFab& PoissonPhi_Old, MultiFab& Phidiff, Real phi_tolerance, int step, int& steady_state_step, int& inc_step);
 void SetupMLMG(std::unique_ptr<amrex::MLMG>& pMLMG, 
@@ -88,6 +90,7 @@ void SetupMLMG(std::unique_ptr<amrex::MLMG>& pMLMG,
         MultiFab& MaterialMask,
 	const MultiFab& acceptor_den,
         const MultiFab& donor_den,
+	const LCCircuit& lc_circuit,
         c_FerroX& rFerroX, MultiFab& PoissonPhi, amrex::Real& time, amrex::LPInfo& info);
 
 #ifdef AMREX_USE_EB
@@ -98,6 +101,7 @@ void SetupMLMG_EB(std::unique_ptr<amrex::MLMG>& pMLMG,
         std::array< MultiFab, AMREX_SPACEDIM >& beta_face,
         MultiFab& MaterialMask,
         MultiFab& beta_cc,
+	const LCCircuit& lc_circuit,
         c_FerroX& rFerroX, MultiFab& PoissonPhi, amrex::Real& time, amrex::LPInfo& info);
 #endif
 
@@ -121,6 +125,7 @@ void ComputePhi_Rho(std::unique_ptr<amrex::MLMG>& pMLMG,
              MultiFab& angle_alpha, MultiFab& angle_beta, MultiFab& angle_theta,
              const          Geometry& geom,
              const amrex::GpuArray<int, AMREX_SPACEDIM>& n_cell,
+	     const LCCircuit& lc_circuit,
 	     c_FerroX& rFerroX,
 	     amrex::Real& time,
 	     const amrex::GpuArray<amrex::Real, AMREX_SPACEDIM>& prob_lo,
@@ -146,6 +151,7 @@ void ComputePhi(std::unique_ptr<amrex::MLMG>& pMLMG,
              MultiFab& angle_alpha, MultiFab& angle_beta, MultiFab& angle_theta,
              const          Geometry& geom,
              const amrex::GpuArray<int, AMREX_SPACEDIM>& n_cell,
+	     const LCCircuit& lc_circuit,
 	     c_FerroX& rFerroX,
 	     amrex::Real& time,
 	     const amrex::GpuArray<amrex::Real, AMREX_SPACEDIM>& prob_lo,
@@ -194,3 +200,6 @@ void ComputePhi_Rho_EB(std::unique_ptr<amrex::MLMG>& pMLMG,
 	     const amrex::GpuArray<amrex::Real, AMREX_SPACEDIM>& prob_lo,
              const amrex::GpuArray<amrex::Real, AMREX_SPACEDIM>& prob_hi);
 #endif
+
+amrex::Real GetDiodeVoltage(amrex::MultiFab& PoissonPhi, const amrex::Geometry& geom);
+

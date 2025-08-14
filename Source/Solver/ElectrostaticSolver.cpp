@@ -3,7 +3,7 @@
 #include "ChargeDensity.H"
 #include "Utils/eXstaticUtils/eXstaticUtil.H"
 #include "Utils/FerroXUtils/FerroXUtil.H"
-
+#include "LCCircuit.H"
 
 void ComputePoissonRHS(MultiFab&               PoissonRHS,
                 Array<MultiFab, AMREX_SPACEDIM> &P_old,
@@ -429,8 +429,7 @@ void Fill_Constant_Inhomogeneous_Boundaries(c_FerroX& rFerroX, MultiFab& Poisson
 }
 
 
-
-void Fill_FunctionBased_Inhomogeneous_Boundaries(c_FerroX& rFerroX, MultiFab& PoissonPhi, amrex::Real& time)
+void Fill_FunctionBased_Inhomogeneous_Boundaries(c_FerroX& rFerroX, const LCCircuit& lc_circuit_in, MultiFab& PoissonPhi, amrex::Real& time)
 {
     auto& rGprop = rFerroX.get_GeometryProperties();
     Box const& domain = rGprop.geom.Domain();
@@ -441,8 +440,20 @@ void Fill_FunctionBased_Inhomogeneous_Boundaries(c_FerroX& rFerroX, MultiFab& Po
     auto& rBC = rFerroX.get_BoundaryConditions();
     auto& bcAny_2d = rBC.bcAny_2d;
     auto& map_bcAny_2d = rBC.map_bcAny_2d;
+    
+    // Query the circuit flag once at the beginning of the function
+    amrex::ParmParse pp_circuit("circuit");
+    int enable_lc_test = 0;
+    pp_circuit.query("enable_lc_test", enable_lc_test);
 
-    // Get directions with function-based boundaries
+    // Get the circuit voltage if the flag is enabled.
+    // This variable is now in a scope accessible to the loops below.
+    amrex::Real circuit_voltage = 0.0;
+    if (enable_lc_test == 1) {
+        circuit_voltage = lc_circuit_in.GetVoltage();
+    }
+    
+    // Get directions with function-based boundaries for the non-coupled case
     std::vector<int> dir_inhomo_func_lo, dir_inhomo_func_hi;
     std::string value = "inhomogeneous_function";
     bool found_lo = findByValue(dir_inhomo_func_lo, map_bcAny_2d[0], value);
@@ -454,14 +465,13 @@ void Fill_FunctionBased_Inhomogeneous_Boundaries(c_FerroX& rFerroX, MultiFab& Po
         const auto& soln_arr = PoissonPhi.array(mfi);
         const auto& validbox = mfi.validbox();
 
-        /*for low sides*/
+        // --- Low Side Boundary Conditions ---
         if(found_lo)
         {
             for (auto dir : dir_inhomo_func_lo)
             {
                 if (validbox.smallEnd(dir) == domain.smallEnd(dir))
                 {
-                    // Create ghost box for all ghost cells on low side
                     Box ghostbox = validbox;
                     ghostbox.setSmall(dir, domain.smallEnd(dir) - PoissonPhi.nGrowVect()[dir]);
                     ghostbox.setBig(dir, domain.smallEnd(dir) - 1);
@@ -487,37 +497,60 @@ void Fill_FunctionBased_Inhomogeneous_Boundaries(c_FerroX& rFerroX, MultiFab& Po
                 }
             }
         }
-
-        /*for high sides*/
-        if(found_hi)
+        
+        // --- High Side Boundary Conditions ---
+        if (enable_lc_test == 1)
         {
-            for (auto dir : dir_inhomo_func_hi)
+            // Use the circuit voltage if the flag is enabled
+            // Assuming coupling is on the high-side z-boundary (direction 2)
+            int dir = 2;
+            if (validbox.bigEnd(dir) == domain.bigEnd(dir))
             {
-                if (validbox.bigEnd(dir) == domain.bigEnd(dir))
+                Box ghostbox = validbox;
+                ghostbox.setSmall(dir, domain.bigEnd(dir) + 1);
+                ghostbox.setBig(dir, domain.bigEnd(dir) + PoissonPhi.nGrowVect()[dir]);
+                
+		//amrex::Print() << "Setting high-side z-boundary condition to circuit voltage: "
+                //       << circuit_voltage << " V at ghostbox " << ghostbox << "\n"; 
+                
+		amrex::ParallelFor(ghostbox,
+                [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
-                    // Create ghost box for all ghost cells on high side
-                    Box ghostbox = validbox;
-                    ghostbox.setSmall(dir, domain.bigEnd(dir) + 1);
-                    ghostbox.setBig(dir, domain.bigEnd(dir) + PoissonPhi.nGrowVect()[dir]);
-
-                    std::string macro_str = std::any_cast<std::string>(bcAny_2d[1][dir]);
-                    auto pParser = rBC.get_p_parser(macro_str);
-
-                    #ifdef TIME_DEPENDENT
-                        const auto& macro_parser = pParser->compile<4>();
-                    #else
-                        const auto& macro_parser = pParser->compile<3>();
-                    #endif
-
-                    amrex::ParallelFor(ghostbox,
-                    [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                    soln_arr(i, j, k) = circuit_voltage;
+                });
+            }
+        }
+        else // Fall back to the function-based approach for high sides
+        {
+            if (found_hi)
+            {
+                for (auto dir : dir_inhomo_func_hi)
+                {
+                    if (validbox.bigEnd(dir) == domain.bigEnd(dir))
                     {
+                        Box ghostbox = validbox;
+                        ghostbox.setSmall(dir, domain.bigEnd(dir) + 1);
+                        ghostbox.setBig(dir, domain.bigEnd(dir) + PoissonPhi.nGrowVect()[dir]);
+
+                        std::string macro_str = std::any_cast<std::string>(bcAny_2d[1][dir]);
+                        auto pParser = rBC.get_p_parser(macro_str);
+
                         #ifdef TIME_DEPENDENT
-                            eXstatic_MFab_Util::ConvertParserIntoMultiFab_4vars(i,j,k,time,dx,real_box,iv,macro_parser,soln_arr);
+                            const auto& macro_parser = pParser->compile<4>();
                         #else
-                            eXstatic_MFab_Util::ConvertParserIntoMultiFab_3vars(i,j,k,dx,real_box,iv,macro_parser,soln_arr);
+                            const auto& macro_parser = pParser->compile<3>();
                         #endif
-                    });
+
+                        amrex::ParallelFor(ghostbox,
+                        [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                        {
+                            #ifdef TIME_DEPENDENT
+                                eXstatic_MFab_Util::ConvertParserIntoMultiFab_4vars(i,j,k,time,dx,real_box,iv,macro_parser,soln_arr);
+                            #else
+                                eXstatic_MFab_Util::ConvertParserIntoMultiFab_3vars(i,j,k,dx,real_box,iv,macro_parser,soln_arr);
+                            #endif
+                        });
+                    }
                 }
             }
         }
@@ -806,6 +839,7 @@ void SetupMLMG(std::unique_ptr<amrex::MLMG>& pMLMG,
 	MultiFab& MaterialMask,
 	const MultiFab& acceptor_den,
 	const MultiFab& donor_den,
+	const LCCircuit& lc_circuit,
         c_FerroX& rFerroX, MultiFab& PoissonPhi, amrex::Real& time, amrex::LPInfo& info)
  {
     auto& rGprop = rFerroX.get_GeometryProperties();
@@ -836,7 +870,7 @@ void SetupMLMG(std::unique_ptr<amrex::MLMG>& pMLMG,
     }
     if(some_functionbased_inhomogeneous_boundaries)
     {
-        Fill_FunctionBased_Inhomogeneous_Boundaries(rFerroX, PoissonPhi, time);
+        Fill_FunctionBased_Inhomogeneous_Boundaries(rFerroX, lc_circuit, PoissonPhi, time);
     }
     PoissonPhi.FillBoundary(geom.periodicity());
 
@@ -863,6 +897,7 @@ void SetupMLMG(std::unique_ptr<amrex::MLMG>& pMLMG,
         std::array< MultiFab, AMREX_SPACEDIM >& beta_face,
 	MultiFab& MaterialMask,
         MultiFab& beta_cc,
+	const LCCircuit& lc_circuit,
         c_FerroX& rFerroX, MultiFab& PoissonPhi, amrex::Real& time, amrex::LPInfo& info)
  {
     auto& rGprop = rFerroX.get_GeometryProperties();
@@ -895,7 +930,7 @@ void SetupMLMG(std::unique_ptr<amrex::MLMG>& pMLMG,
     }
     if(some_functionbased_inhomogeneous_boundaries)
     {
-        Fill_FunctionBased_Inhomogeneous_Boundaries(rFerroX, PoissonPhi, time);
+        Fill_FunctionBased_Inhomogeneous_Boundaries(rFerroX, lc_circuit, PoissonPhi, time);
     }
     PoissonPhi.FillBoundary(geom.periodicity());
 
@@ -1019,6 +1054,7 @@ void ComputePhi_Rho(std::unique_ptr<amrex::MLMG>& pMLMG,
              MultiFab& angle_alpha, MultiFab& angle_beta, MultiFab& angle_theta,
              const          Geometry& geom,
              const amrex::GpuArray<int, AMREX_SPACEDIM>& n_cell,
+	     const LCCircuit& lc_circuit,
 	     c_FerroX& rFerroX,
 	     amrex::Real& time,
 	     const amrex::GpuArray<amrex::Real, AMREX_SPACEDIM>& prob_lo,
@@ -1046,7 +1082,7 @@ void ComputePhi_Rho(std::unique_ptr<amrex::MLMG>& pMLMG,
         }
         if(some_functionbased_inhomogeneous_boundaries)
         {
-            Fill_FunctionBased_Inhomogeneous_Boundaries(rFerroX, PoissonPhi, time);
+            Fill_FunctionBased_Inhomogeneous_Boundaries(rFerroX, lc_circuit, PoissonPhi, time);
         }
         PoissonPhi.FillBoundary(geom.periodicity());
 
@@ -1087,6 +1123,7 @@ void ComputePhi(std::unique_ptr<amrex::MLMG>& pMLMG,
              MultiFab& angle_alpha, MultiFab& angle_beta, MultiFab& angle_theta,
              const          Geometry& geom,
              const amrex::GpuArray<int, AMREX_SPACEDIM>& n_cell,
+	     const LCCircuit& lc_circuit,
 	     c_FerroX& rFerroX,
 	     amrex::Real& time,
 	     const amrex::GpuArray<amrex::Real, AMREX_SPACEDIM>& prob_lo,
@@ -1114,7 +1151,7 @@ void ComputePhi(std::unique_ptr<amrex::MLMG>& pMLMG,
         }
         if(some_functionbased_inhomogeneous_boundaries)
         {
-            Fill_FunctionBased_Inhomogeneous_Boundaries(rFerroX, PoissonPhi, time);
+            Fill_FunctionBased_Inhomogeneous_Boundaries(rFerroX, lc_circuit, PoissonPhi, time);
         }
         PoissonPhi.FillBoundary(geom.periodicity());
 
@@ -1172,3 +1209,68 @@ void ComputePhi_Rho_EB(std::unique_ptr<amrex::MLMG>& pMLMG,
         ComputeRho_DriftDiffusion(PoissonPhi, rho, Jn, Jp, e_den, p_den, acceptor_den, donor_den, MaterialMask, geom);
 }
 #endif
+
+// This function calculates the voltage difference between the high and low z boundaries
+// using the PoissonPhi MultiFab. It samples the potential at the center of the x-y plane.
+
+amrex::Real GetDiodeVoltage(amrex::MultiFab& PoissonPhi, const amrex::Geometry& geom)
+{
+    BL_PROFILE("ElectrostaticSolver::GetDiodeVoltage");
+
+    const auto domain = geom.Domain();
+    const auto n_cell = domain.length();
+
+    // These will store one value per tile, reduced later
+    amrex::Gpu::DeviceVector<amrex::Real> phi_hi_vec, phi_lo_vec;
+    phi_hi_vec.resize(PoissonPhi.local_size(), 0.0_rt);
+    phi_lo_vec.resize(PoissonPhi.local_size(), 0.0_rt);
+
+    amrex::Real* phi_hi_ptr = phi_hi_vec.data();
+    amrex::Real* phi_lo_ptr = phi_lo_vec.data();
+
+    int tile_index = 0;
+    for (MFIter mfi(PoissonPhi, TilingIfNotGPU()); mfi.isValid(); ++mfi, ++tile_index)
+    {
+        const auto& phi_arr = PoissonPhi.const_array(mfi);
+        const auto tbx = mfi.growntilebox(1);
+
+        amrex::ParallelFor(tbx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
+        {
+            // bottom layer
+            if (k == 0) {
+                phi_lo_ptr[tile_index] = phi_arr(i,j,k);
+            }
+            // top layer
+            else if (k == n_cell[2] - 1) {
+                phi_hi_ptr[tile_index] = phi_arr(i,j,k);
+            }
+        });
+    }
+
+    // Bring results back to host
+    amrex::Vector<amrex::Real> h_phi_hi(phi_hi_vec.size());
+    amrex::Vector<amrex::Real> h_phi_lo(phi_lo_vec.size());
+
+    amrex::Gpu::copy(amrex::Gpu::deviceToHost, phi_hi_vec.begin(), phi_hi_vec.end(), h_phi_hi.begin());
+    amrex::Gpu::copy(amrex::Gpu::deviceToHost, phi_lo_vec.begin(), phi_lo_vec.end(), h_phi_lo.begin());
+
+    // Reduce over tiles to get average or representative value
+    amrex::Real phi_hi_sum = 0.0_rt;
+    amrex::Real phi_lo_sum = 0.0_rt;
+    int count_hi = 0;
+    int count_lo = 0;
+
+    for (auto v : h_phi_hi) {
+        if (v != 0.0_rt) { phi_hi_sum += v; count_hi++; }
+    }
+    for (auto v : h_phi_lo) {
+        if (v != 0.0_rt) { phi_lo_sum += v; count_lo++; }
+    }
+
+    amrex::Real phi_hi_avg = (count_hi > 0) ? phi_hi_sum / count_hi : 0.0_rt;
+    amrex::Real phi_lo_avg = (count_lo > 0) ? phi_lo_sum / count_lo : 0.0_rt;
+
+    //amrex::Print() << " phi_hi_avg - phi_lo_avg = " << phi_hi_avg - phi_lo_avg << "\n";
+    return phi_hi_avg - phi_lo_avg;
+}
+

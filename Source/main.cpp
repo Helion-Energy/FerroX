@@ -24,7 +24,7 @@
 #include "Utils/SelectWarpXUtils/WarpXProfilerWrapper.H"
 #include "Utils/eXstaticUtils/eXstaticUtil.H"
 #include "Utils/FerroXUtils/FerroXUtil.H"
-
+#include "Solver/LCCircuit.H"
 
 
 
@@ -216,6 +216,9 @@ void main_main (c_FerroX& rFerroX)
     FerroX_Util::Contains_sc(MaterialMask, contains_SC);
     //amrex::Print() << "contains_SC = " << contains_SC << "\n";
 
+    LCCircuit lc_circuit;
+    lc_circuit.Initialize();
+
     std::array<std::array<amrex::LinOpBCType,AMREX_SPACEDIM>,2> LinOpBCType_2d;
     bool all_homogeneous_boundaries = true;
     bool some_functionbased_inhomogeneous_boundaries = false;
@@ -258,11 +261,11 @@ void main_main (c_FerroX& rFerroX)
     int linop_maxorder = 2;
     int amrlev = 0; //refers to the setcoarsest level of the solve
 
-    SetupMLMG(pMLMG, p_mlabec, LinOpBCType_2d, n_cell, beta_face, MaterialMask, acceptor_den, donor_den, rFerroX, PoissonPhi, time, info);
+    SetupMLMG(pMLMG, p_mlabec, LinOpBCType_2d, n_cell, beta_face, MaterialMask, acceptor_den, donor_den, lc_circuit, rFerroX, PoissonPhi, time, info);
 
 #ifdef AMREX_USE_EB
     std::unique_ptr<amrex::MLEBABecLap> p_mlebabec;
-    SetupMLMG_EB(pMLMG, p_mlebabec, LinOpBCType_2d, n_cell, beta_face, MaterialMask, beta_cc, rFerroX, PoissonPhi, time, info);
+    SetupMLMG_EB(pMLMG, p_mlebabec, LinOpBCType_2d, n_cell, beta_face, MaterialMask, beta_cc, lc_circuit, rFerroX, PoissonPhi, time, info);
 #endif
     
     // Write a plotfile of the initial data if plot_int > 0
@@ -303,6 +306,17 @@ void main_main (c_FerroX& rFerroX)
 
 #endif
 
+std::ofstream outfile("circuit_data.txt");
+
+// Check if the file was opened successfully
+if (!outfile.is_open())
+{
+    std::cerr << "Error: Could not open the output file." << std::endl;
+}
+
+// Write a header line to the file for easy plotting and data interpretation
+outfile << "Time\tVoltage\tCurrent" << std::endl;
+
     for (int step = 1; step <= nsteps; ++step)
     {
         Real step_strt_time = ParallelDescriptor::second();
@@ -312,11 +326,11 @@ void main_main (c_FerroX& rFerroX)
 #ifdef AMREX_USE_EB
             ComputePhi_Rho_EB(pMLMG, p_mlebabec, alpha_cc, PoissonRHS, PoissonPhi, PoissonPhi_Prev, PhiErr,
                               P_old, charge_den, Jn, Jp, e_den, hole_den, acceptor_den, donor_den, MaterialMask,
-                              angle_alpha, angle_beta, angle_theta, geom, n_cell, rFerroX, prob_lo, prob_hi);
+                              angle_alpha, angle_beta, angle_theta, geom, n_cell, lc_circuit, rFerroX, prob_lo, prob_hi);
 #else
             ComputePhi_Rho(pMLMG, p_mlabec, LinOpBCType_2d, alpha_cc, PoissonRHS, PoissonPhi, PoissonPhi_Prev, PhiErr,
                            P_old, charge_den, Jn, Jp, e_den, hole_den, acceptor_den, donor_den, MaterialMask,
-                           angle_alpha, angle_beta, angle_theta, geom, n_cell, rFerroX, time, prob_lo, prob_hi);
+                           angle_alpha, angle_beta, angle_theta, geom, n_cell, lc_circuit, rFerroX, time, prob_lo, prob_hi);
 #endif
 
             // Calculate E from Phi
@@ -359,7 +373,7 @@ void main_main (c_FerroX& rFerroX)
 #else
                 ComputePhi_Rho(pMLMG, p_mlabec, LinOpBCType_2d, alpha_cc, PoissonRHS, PoissonPhi, PoissonPhi_Prev, PhiErr,
                                P_new_pre, charge_den, Jn, Jp, e_den, hole_den, acceptor_den, donor_den, MaterialMask,
-                               angle_alpha, angle_beta, angle_theta, geom, n_cell, rFerroX, time, prob_lo, prob_hi);
+                               angle_alpha, angle_beta, angle_theta, geom, n_cell, lc_circuit, rFerroX, time, prob_lo, prob_hi);
 #endif
 
                 //update E using PoissonPhi computed with P_new_pre
@@ -399,11 +413,11 @@ void main_main (c_FerroX& rFerroX)
 #ifdef AMREX_USE_EB
             ComputePhi_Rho_EB(pMLMG, p_mlebabec, alpha_cc, PoissonRHS, PoissonPhi, PoissonPhi_Prev, PhiErr,
                           P_old, charge_den, Jn, Jp, e_den, hole_den, acceptor_den, donor_den, MaterialMask,
-                          angle_alpha, angle_beta, angle_theta, geom, n_cell, rFerroX, prob_lo, prob_hi);
+                          angle_alpha, angle_beta, angle_theta, geom, n_cell, lc_circuit, rFerroX, prob_lo, prob_hi);
 #else
             ComputePhi(pMLMG, p_mlabec, LinOpBCType_2d, alpha_cc, PoissonRHS, PoissonPhi, PoissonPhi_Prev, PhiErr,
                        P_old, charge_den, Jn, Jp, e_den, hole_den, acceptor_den, donor_den, MaterialMask,
-                       angle_alpha, angle_beta, angle_theta, geom, n_cell, rFerroX, time, prob_lo, prob_hi);
+                       angle_alpha, angle_beta, angle_theta, geom, n_cell, lc_circuit, rFerroX, time, prob_lo, prob_hi);
 #endif
 
             ComputeEfromPhi(PoissonPhi, E, angle_alpha, angle_beta, angle_theta, geom, prob_lo, prob_hi);
@@ -449,9 +463,21 @@ void main_main (c_FerroX& rFerroX)
 #endif
 	}
 
-        // Check if steady state has reached 
-    //    CheckSteadyState(PoissonPhi, PoissonPhi_Old, Phidiff, phi_tolerance, step, steady_state_step, inc_step); // Calculate E from Phi
+        // --- Circuit Solver Update ---
+        // Update the LC circuit state using the RK4 method
+	amrex::Real tcad_diode_voltage = GetDiodeVoltage(PoissonPhi, geom);	
+	//amrex::Real tcad_diode_voltage = 0.0;
+        lc_circuit.UpdateTimeStep(dt, tcad_diode_voltage);
 
+	// Get the updated values from the LC circuit
+        Real voltage = lc_circuit.GetVoltage();
+        Real current = lc_circuit.GetCurrent();
+
+        // Write the time, voltage, and current to the file
+        // The values are separated by tabs ('\t') for easy parsing
+	 if (outfile.is_open()) {
+             outfile << time << "\t" << voltage << "\t" << current << std::endl;
+         }
         Real step_stop_time = ParallelDescriptor::second() - step_strt_time;
         ParallelDescriptor::ReduceRealMax(step_stop_time);
 
@@ -510,7 +536,7 @@ void main_main (c_FerroX& rFerroX)
 #else
            ComputePhi_Rho(pMLMG, p_mlabec, LinOpBCType_2d, alpha_cc, PoissonRHS, PoissonPhi, PoissonPhi_Prev, PhiErr,
                    P_old, charge_den, Jn, Jp, e_den, hole_den, acceptor_den, donor_den, MaterialMask, 
-                   angle_alpha, angle_beta, angle_theta, geom, n_cell, rFerroX, time, prob_lo, prob_hi);
+                   angle_alpha, angle_beta, angle_theta, geom, n_cell, lc_circuit, rFerroX, time, prob_lo, prob_hi);
 #endif
         }//end inc_step	
    
@@ -533,7 +559,11 @@ void main_main (c_FerroX& rFerroX)
 
     } // end step
 
-    // MultiFab memory usage
+if (outfile.is_open()) {
+    outfile.close();
+}
+
+// MultiFab memory usage
     const int IOProc = ParallelDescriptor::IOProcessorNumber();
 
     amrex::Long min_fab_megabytes  = amrex::TotalBytesAllocatedInFabsHWM()/1048576;
